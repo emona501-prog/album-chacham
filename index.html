@@ -226,7 +226,8 @@ h1{font-family:"Frank Ruhl Libre",serif;font-size:30px;line-height:1.2;margin:18
 .modal .acts.col{flex-direction:column}
 .modal .stat{padding:10px 0;font-size:14.5px}
 .fs{position:fixed;inset:0;z-index:75;background:#151210;animation:fade .18s}
-.fs canvas{position:absolute;left:50%;top:calc(50% - 34px);box-shadow:0 10px 40px rgba(0,0,0,.6)}
+.fs .fs-wrap{position:absolute;left:50%;top:calc(50% - 34px);transform:translate(-50%,-50%);box-shadow:0 10px 40px rgba(0,0,0,.6);overflow:hidden;touch-action:none}
+.fs canvas{display:block}
 .fs-bar{position:absolute;inset-inline:0;bottom:0;display:flex;align-items:center;gap:10px;padding:12px 16px calc(12px + var(--safe-b));color:#fff}
 .fs-bar span{flex:1;text-align:center;font-size:14px;opacity:.8;white-space:nowrap}
 .fs-bar button{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.12);display:grid;place-items:center;color:#fff}
@@ -2146,9 +2147,13 @@ async function paint(cv, sp, cssW, opt = {}){
     ctx.strokeRect(B, B, off.width - 2*B, off.height - 2*B);
   }
   if (tok !== cv._tok) return;
+  if (opt.rotate){ // סיבוב 90° בתוך הפיקסלים
+    cv.width = off.height; cv.height = off.width; cv.style.width = cssH + 'px'; cv.style.height = cssW + 'px';
+    const c2 = cv.getContext('2d'); c2.setTransform(1, 0, 0, 1, 0, 0); c2.translate(off.height, 0); c2.rotate(Math.PI / 2); c2.drawImage(off, 0, 0); c2.setTransform(1, 0, 0, 1, 0, 0);
+  } else {
   cv.width = off.width; cv.height = off.height;
   cv.style.width = cssW + 'px'; cv.style.height = cssH + 'px';
-  cv.getContext('2d').drawImage(off, 0, 0);
+  cv.getContext('2d').drawImage(off, 0, 0); }
   off.width = off.height = 1;
 }
 
@@ -2322,14 +2327,14 @@ $('paper').onclick = openFS;
 function openFS(){
   if (FS) return;
   const el = document.createElement('div'); el.className = 'fs';
-  el.innerHTML = `<canvas></canvas><div class="fs-bar">
+  el.innerHTML = `<div class="fs-wrap"><canvas></canvas></div><div class="fs-bar">
     <button data-a="x" aria-label="סגירה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <button data-a="prev" aria-label="הקודמת"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 18l6-6-6-6"/></svg></button>
     <span></span>
     <button data-a="next" aria-label="הבאה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 18l-6-6 6-6"/></svg></button>
     <button data-a="alt" class="alt">עיצוב אחר</button></div>`;
   document.body.appendChild(el); FS = {el};
-  { const c = el.querySelector('canvas'); pinchZoom(c, () => c); }
+  { const c = el.querySelector('canvas'); pinchZoom(el.querySelector('.fs-wrap'), () => c); }
   history.pushState({fs:1}, '');
   el.onclick = e => {
     const a = e.target.closest('[data-a]'); if (!a) return;
@@ -2342,14 +2347,14 @@ function openFS(){
 }
 function renderFS(){
   if (!FS) return;
-  zoomReset(FS.el.querySelector('canvas'));
+  zoomReset(FS.el.querySelector('.fs-wrap'));
   const G = geo(), ar = G.W / G.H, portrait = innerHeight > innerWidth;
   const availW = portrait ? innerHeight - 100 : innerWidth - 24, availH = portrait ? innerWidth - 20 : innerHeight - 90;
   const cssW = Math.min(availW, availH * ar);
   const cv = FS.el.querySelector('canvas');
-  cv.style.transform = portrait ? 'translate(-50%,-50%) rotate(90deg)' : 'translate(-50%,-50%)';
   FS.el.querySelector('.fs-bar span').textContent = `${PV.cur + 1} / ${PV.plan.spreads.length}`;
-  paint(cv, PV.plan.spreads[PV.cur], cssW, {fold:true, maxDpr:2.5});
+  // בטלפון לאורך: מסובבים את הציור עצמו (לא את הקנבס) – כך ההגדלה בצביטה עובדת בלי לאבד את התמונה
+  paint(cv, PV.plan.spreads[PV.cur], cssW, {fold:true, maxDpr:2.5, rotate:portrait});
 }
 function closeFS(){ if (!FS) return; FS.el.remove(); FS = null; }
 
