@@ -520,7 +520,7 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
     <div class="ctrl-row"><span>בעל השמחה<br><small style="color:var(--muted)" id="starSum"></small></span><button class="mini" id="starBtn">מי הכוכב?</button></div>
     <div class="ctrl-row"><span>כותרות פרק<br><small style="color:var(--muted)" id="scSum">"הריקודים", "החופה"… לפי סוג התמונות</small></span><button class="switch" id="scSw"></button></div>
     <div class="ctrl-row"><span>עיטורים אוטומטיים<br><small style="color:var(--muted)">עיטור וסמל האירוע בפתיחה ובכריכה</small></span><button class="switch" id="decoSw"></button></div>
-    <div class="ctrl-row"><span>אלמנטים אוטומטיים ✨<br><small style="color:var(--muted)">המערכת מוסיפה בעדינות אלמנטים של האירוע רק במקומות ריקים</small></span><button class="switch" id="elsSw"></button></div>
+    <div class="ctrl-row"><span>עיטור מקצועי אוטומטי ✨<br><small style="color:var(--muted)">מסגרות זהב ועיטורי פינה סביב תמונות – רק איפה שיש מקום, חדים בדפוס</small></span><button class="switch" id="elsSw"></button></div>
     <div class="ctrl-row hidden" id="bgAllRow"><span>רקע אחיד לכל האלבום<br><small style="color:var(--muted)" id="bgAllSum"></small></span><button class="mini" id="bgAllOff">ביטול</button></div>
     <div class="ctrl-row"><span>ריטוש ומסננים<br><small style="color:var(--muted)" id="rtSum"></small></span><button class="mini" id="rtBtn">הגדרות</button></div>
     <div class="ctrl-row"><span>כריכה קדמית ואחורית<br><small style="color:var(--muted)" id="cvSum"></small></span><button class="mini accent" id="coverBtn">עיצוב הכריכה</button></div>
@@ -3390,12 +3390,14 @@ function edAction(a, btn){
         <div class="ed-row"><span>צל</span><input type="range" min="0" max="1" step=".01" class="ed-rg" id="rS"></div>
         <div class="ed-row"><span>סוג צל</span><div class="ed-chips">${[['soft', 'רך'], ['hard', 'חד'], ['long', 'ארוך'], ['float', 'מרחף']].map(([v, n]) => `<button data-ss="${v}" class="${(it.shStyle || 'soft') === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         <div class="ed-row"><span>זוהר</span><div class="ed-chips"><button data-gl="none">בלי</button><button data-gl="gold">זהב</button><button data-gl="white">לבן</button></div></div>
-        <div class="ed-row"><span>מסגרת פולארויד</span><button class="switch ${it.borderB ? 'on' : ''}" data-pol="1"></button></div>`, P => {
+        <div class="ed-row"><span>מסגרת פולארויד</span><button class="switch ${it.borderB ? 'on' : ''}" data-pol="1"></button></div>
+        <div class="ed-row"><span>עיטור זהב<br><small style="opacity:.7">חד בדפוס</small></span><div class="ed-chips">${[['', 'בלי'], ['v:fr-ornate', 'מעוטרת'], ['v:fr-classic', 'קלאסית'], ['v:fr-leaf', 'עלים'], ['v:fr-deco', 'דקו'], ['v:cr-scroll', 'פינות']].map(([v, n]) => `<button data-vf="${v}" class="${(edItems().find(o => o.t === 'el' && o.of === it.id && String(o.el).startsWith('v:')) || {el:''}).el === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>`, P => {
         slider(P, '#rB', () => it.border || 0, v => { it.border = v; if (it.borderB) it.borderB = v * 2.6; });
         slider(P, '#rS', () => it.shadow || 0, v => { it.shadow = v; it.glow = null; });
         bindSwatches(P, 'swB', c => { it.borderColor = c; if (!it.border) it.border = 1.2; });
         P.addEventListener('click', e => {
-          const g = e.target.closest('[data-gl]'), pl = e.target.closest('[data-pol]'), ss = e.target.closest('[data-ss]');
+          const g = e.target.closest('[data-gl]'), pl = e.target.closest('[data-pol]'), ss = e.target.closest('[data-ss]'), vf = e.target.closest('[data-vf]');
+          if (vf){ pushUndo(); const its = edItems(); if (vf.dataset.vf && !it.rot) vFitPhoto(it, vf.dataset.vf, edGeo()); vWrapPhoto(its, it, vf.dataset.vf); ED.sel = its.indexOf(it); P.querySelectorAll('[data-vf]').forEach(x => x.classList.toggle('on', x === vf)); commit(); edRender(); return; }
           if (ss){ pushUndo(); it.shStyle = ss.dataset.ss; it.glow = null; if (!(it.shadow > 0)){ it.shadow = .6; P.querySelector('#rS').value = .6; } P.querySelectorAll('[data-ss]').forEach(x => x.classList.toggle('on', x === ss)); commit(); edRender(); }
           if (g){ pushUndo(); it.glow = g.dataset.gl === 'none' ? null : g.dataset.gl === 'gold' ? 'rgba(212,170,90,.9)' : 'rgba(255,255,255,.95)'; commit(); edRender(); }
           if (pl){ pushUndo(); it.borderB = it.borderB ? 0 : Math.max(1.5, it.border || 2) * 2.6; if (!it.border) it.border = 2; pl.classList.toggle('on', !!it.borderB); commit(); edRender(); }
@@ -4510,7 +4512,7 @@ $('starBtn').onclick = starButton;
    שלב 9 – אלמנטים: מגירת אלמנטים בעורך (מובנים + שלי), הוספה, הזזה, שקיפות, היפוך
    פריט בכפולה: {t:'el', el:'b:e012.webp' | 'u:<id>', x, y, w, h, rot, op, flip}
    ========================================================= */
-const EL_CATS = {event:'לאירוע שלי', texts:'כיתובים', frames:'מסגרות ועיטורים', wedding:'חתונה', barmitzva:'בר מצווה', brit:'ברית ותינוקות', color:'צבעוני', general:'כללי', mine:'שלי'};
+const EL_CATS = {event:'לאירוע שלי', vec:'עיטורי זהב ✦', texts:'כיתובים', frames:'מסגרות ועיטורים', wedding:'חתונה', barmitzva:'בר מצווה', brit:'ברית ותינוקות', color:'צבעוני', general:'כללי', mine:'שלי'};
 const EV_CATS = {barmitzva:['barmitzva', 'texts', 'frames'], batmitzva:['frames', 'texts', 'general'], wedding:['wedding', 'texts', 'frames'], newborn:['brit', 'texts', 'frames'],
   birthday:['color', 'general', 'texts'], family:['general', 'color', 'texts'], general:['frames', 'texts', 'general']};
 const ELS = {cat:null, mine:[], loaded:false, bmp:new Map(), pend:new Map()};
@@ -4522,11 +4524,13 @@ async function elsLoad(){
   try{ const m = await DB.get('meta', 'myEls'); ELS.mine = (m && m.list) || []; }catch(_){}
 }
 function elInfo(id){
+  if (String(id).startsWith('v:')) return VORN_INFO(id);
   if (id.startsWith('u:')) return ELS.mine.find(e => e.id === id);
   return (ELS.cat || []).find(e => e.id === id);
 }
 /* טעינת תמונת אלמנט (פעם אחת, נשמרת בזיכרון – הקבצים קטנים) */
 function getEl(id){
+  if (String(id).startsWith('v:')){ const v = {vec:true}; ELS.bmp.set(id, v); return Promise.resolve(v); }
   if (ELS.bmp.has(id)) return Promise.resolve(ELS.bmp.get(id));
   if (ELS.pend.has(id)) return ELS.pend.get(id);
   const p = (async () => {
@@ -4541,6 +4545,9 @@ function getEl(id){
   ELS.pend.set(id, p); return p;
 }
 function drawElItem(ctx, it, k, ox, img){
+  if (String(it.el).startsWith('v:')){ const x = mx(it.x, k, ox), y = mx(it.y, k, ox), w = it.w * k, h = it.h * k;
+    ctx.save(); ctx.globalAlpha = it.op == null ? 1 : it.op; if (it.flip){ ctx.translate(2*x + w, 0); ctx.scale(-1, 1); }
+    drawVorn(ctx, it, x, y, w, h); ctx.restore(); return; }
   if (!img) return;
   ctx.save();
   ctx.globalAlpha = it.op == null ? 1 : it.op;
@@ -4562,10 +4569,11 @@ async function openElDrawer(){
   const s = document.createElement('div'); s.className = 'scrim el-scrim';
   const list = () => {
     if (cat === 'mine') return ELS.mine;
+    if (cat === 'vec') return vornThumbs();
     if (cat === 'event') return evc.flatMap(c => ELS.cat.filter(e => e.c === c));
     return ELS.cat.filter(e => e.c === cat);
   };
-  const src = e => e.id.startsWith('u:') ? (e.url || '') : EL_BASE() + e.f;
+  const src = e => e.vec ? e.url : e.id.startsWith('u:') ? (e.url || '') : EL_BASE() + e.f;
   const draw = () => {
     const L = list();
     s.innerHTML = `<div class="sheet el-sheet"><div class="grab"></div>
@@ -5144,7 +5152,7 @@ function updDesignRow(){
   const g = S.project.bgAll; if ($('bgAllRow')){ $('bgAllRow').classList.toggle('hidden', !g); if (g) $('bgAllSum').textContent = g.type === 'tex' ? TEXTURES[g.tex] + ' · ' + (PALETTES[g.pal] || PALETTES.theme).n : 'תמונה'; }
 }
 $('decoSw').onclick = () => { S.project.autoDeco = S.project.autoDeco === false; touchProject(); updDesignRow(); showSpread(PV.cur); paintStrip(); };
-$('elsSw').onclick = () => { S.project.autoEls = !S.project.autoEls; touchProject(); updDesignRow(); showSpread(PV.cur); paintStrip(); if (!S.project.autoEls) return toast('האלמנטים האוטומטיים הוסרו'); const n = autoElsCount(); toast(n ? `נוספו ${n} אלמנטים במקומות שמתאימים להם ✨` : 'העימוד צפוף – לא נמצא מקום שמתאים לאלמנט בלי להעמיס. בכפולות עם פחות תמונות הם יופיעו', 4500); };
+$('elsSw').onclick = () => { S.project.autoEls = !S.project.autoEls; touchProject(); updDesignRow(); showSpread(PV.cur); paintStrip(); if (!S.project.autoEls) return toast('העיטורים האוטומטיים הוסרו'); const n = autoElsCount(); toast(n ? `נוספו עיטורים ב-${n} כפולות ✨` : 'העימוד צפוף – אין סביב התמונות מקום לעיטור בלי להעמיס. בכפולות עם תמונה בודדת בעמוד הוא יופיע', 4500); };
 $('bgAllOff').onclick = () => { delete S.project.bgAll; touchProject(); updDesignRow(); showSpread(PV.cur); paintStrip(); };
 
 /* =========================================================
@@ -5960,135 +5968,208 @@ async function openCollages(){
 
 $('colBtn').onclick = openCollages;
 
-/* ---------- מילוי אלמנטים אוטומטי וחכם ----------
-   עקרונות: רק אלמנטים שקשורים לאירוע · רק בשטח ריק אמיתי · לכל היותר אחד בכפולה, וכפולה כן ושתיים לא ·
-   לא על הקפל, לא ליד חיתוך, לא על תמונה או טקסט · בלי חזרות באלבום · לא מגדילים מעבר לאיכות הדפסה */
-const AUTO_EL_SETS = {
-  barmitzva:['e152','e153','e154','e156','e160','e161','e162','e296','e298','e311','e182','e171','e184','e175'],
-  batmitzva:['e198','e201','e202','e210','e212','e196','e223','e175','e184','e006','e030','e033','e249','e182'],
-  wedding:  ['e196','e200','e201','e202','e204','e210','e212','e223','e227','e235','e242','e249','e250','e287','e289','e221'],
-  newborn:  ['e259','e261','e262','e266','e268','e269','e264','e265','e297','e299','e300','e295','e267'],
-  birthday: ['e281','e282','e283','e285','e288','e290','e315','e182','e292','e312'],
-  family:   ['e313','e314','e312','e292','e006','e010','e012','e022','e028','e029','e031','e038','e315'],
-  general:  ['e006','e010','e011','e012','e013','e018','e020','e022','e025','e028','e029','e031','e033','e038','e039','e315']
+/* ---------- עיטורים וקטוריים: מצוירים בקוד ברזולוציית היעד, ולכן חדים לגמרי בדפוס בכל גודל ---------- */
+const VORN = {
+  'v:fr-ornate': {n:'מסגרת מעוטרת', kind:'frame', ar:.8},
+  'v:fr-classic':{n:'מסגרת קלאסית', kind:'frame', ar:.8},
+  'v:fr-leaf':   {n:'מסגרת עלים', kind:'frame', ar:.8},
+  'v:fr-deco':   {n:'מסגרת ארט דקו', kind:'frame', ar:.8},
+  'v:cr-scroll': {n:'עיטור פינה', kind:'corner', ar:1},
+  'v:dv-scroll': {n:'קו מעוטר', kind:'divider', ar:7},
+  'v:sp-stars':  {n:'נצנוץ', kind:'sparkle', ar:1}
 };
-// אלמנטים כהים (כחול נייבי) – לא שמים על רקע כהה
-const AUTO_EL_DARK = new Set(['e028','e029','e031','e032','e039','e153','e311','e312','e313','e292','e295','e152']);
+const VORN_INFO = id => { const v = VORN[id]; return v ? {id, f:id, c:'vec', w:4000, h:Math.round(4000 / v.ar), vec:true, n:v.n} : null; };
+function vGold(ctx, x, y, w, h, col){
+  if (col) return col;
+  const g = ctx.createLinearGradient(x, y, x + w, y + h);
+  g.addColorStop(0, '#9A7630'); g.addColorStop(.22, '#E8CF86'); g.addColorStop(.42, '#B48C3C'); g.addColorStop(.62, '#F2E1A4'); g.addColorStop(.82, '#B08A3A'); g.addColorStop(1, '#8E6C2A');
+  return g;
+}
+// סלסול פינה ביחידות (0..1), הפינה ב-(0,0)
+function vCornerPath(ctx){
+  ctx.beginPath();
+  ctx.moveTo(.03, .98); ctx.bezierCurveTo(.03, .42, .42, .03, .98, .03);              // הקשת הראשית
+  ctx.moveTo(.98, .03); ctx.bezierCurveTo(1.06, .1, .94, .2, .87, .13); ctx.bezierCurveTo(.83, .09, .88, .05, .92, .08); // תלתל בקצה
+  ctx.moveTo(.03, .98); ctx.bezierCurveTo(.1, 1.06, .2, .94, .13, .87); ctx.bezierCurveTo(.09, .83, .05, .88, .08, .92);
+  ctx.moveTo(.16, .16); ctx.bezierCurveTo(.3, .1, .45, .16, .58, .2); ctx.bezierCurveTo(.66, .23, .66, .32, .58, .31);   // סלסול פנימי
+  ctx.moveTo(.16, .16); ctx.bezierCurveTo(.1, .3, .16, .45, .2, .58); ctx.bezierCurveTo(.23, .66, .32, .66, .31, .58);
+}
+function vLeafPath(ctx, x, y, len, ang, wid){ // עלה מחודד
+  const c = Math.cos(ang), s = Math.sin(ang), ex = x + c*len, ey = y + s*len, nx = -s*len*wid, ny = c*len*wid;
+  ctx.moveTo(x, y); ctx.quadraticCurveTo(x + c*len*.5 + nx, y + s*len*.5 + ny, ex, ey); ctx.quadraticCurveTo(x + c*len*.5 - nx, y + s*len*.5 - ny, x, y);
+}
+function vSparkle(ctx, cx, cy, r){
+  ctx.moveTo(cx, cy - r); ctx.quadraticCurveTo(cx + r*.12, cy - r*.12, cx + r, cy); ctx.quadraticCurveTo(cx + r*.12, cy + r*.12, cx, cy + r);
+  ctx.quadraticCurveTo(cx - r*.12, cy + r*.12, cx - r, cy); ctx.quadraticCurveTo(cx - r*.12, cy - r*.12, cx, cy - r); ctx.closePath();
+}
+function drawVorn(ctx, it, x, y, w, h){
+  const v = VORN[it.el]; if (!v) return;
+  const s = Math.min(w, h), paint = vGold(ctx, x, y, w, h, it.col);
+  ctx.save(); ctx.strokeStyle = paint; ctx.fillStyle = paint; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  if (it.shadow){ ctx.shadowColor = 'rgba(0,0,0,.3)'; ctx.shadowBlur = s * .012; ctx.shadowOffsetY = s * .004; }
+  const corner = (cx, cy, size, sx, sy, lw) => { ctx.save(); ctx.translate(cx, cy); ctx.scale(sx * size, sy * size); ctx.lineWidth = lw / size; vCornerPath(ctx); ctx.stroke();
+    ctx.beginPath(); ctx.arc(.3, .3, .035, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); vLeafPath(ctx, .19, .19, .14, Math.PI/4, .28); ctx.fill(); ctx.restore(); };
+  switch (v.kind){
+    case 'frame': {
+      const t = s * .06; // עובי אזור המסגרת – התמונה יושבת בפנים
+      if (it.el === 'v:fr-classic' || it.el === 'v:fr-ornate'){
+        ctx.lineWidth = s * .011; ctx.strokeRect(x + ctx.lineWidth/2, y + ctx.lineWidth/2, w - ctx.lineWidth, h - ctx.lineWidth);
+        const i2 = t * .55; ctx.lineWidth = s * .004; ctx.strokeRect(x + i2, y + i2, w - 2*i2, h - 2*i2);
+        if (it.el === 'v:fr-classic'){ const d = t * .32;
+          for (const [cx, cy] of [[x + i2, y + i2], [x + w - i2, y + i2], [x + i2, y + h - i2], [x + w - i2, y + h - i2]]){ ctx.beginPath(); ctx.moveTo(cx, cy - d); ctx.lineTo(cx + d, cy); ctx.lineTo(cx, cy + d); ctx.lineTo(cx - d, cy); ctx.closePath(); ctx.fill(); } }
+        else { const cs = s * .17, lw = s * .007, o = t * .2;
+          corner(x + o, y + o, cs, 1, 1, lw); corner(x + w - o, y + o, cs, -1, 1, lw); corner(x + o, y + h - o, cs, 1, -1, lw); corner(x + w - o, y + h - o, cs, -1, -1, lw);
+          // קישוט באמצע הצלע העליונה והתחתונה
+          for (const [cy, dir] of [[y + i2, 1], [y + h - i2, -1]]){ const cx = x + w/2, r = s * .035;
+            ctx.beginPath(); ctx.moveTo(cx - r*1.6, cy); ctx.lineTo(cx, cy - r*.9*dir); ctx.lineTo(cx + r*1.6, cy); ctx.lineTo(cx, cy + r*.9*dir); ctx.closePath(); ctx.fill();
+            ctx.lineWidth = s * .005; ctx.beginPath(); ctx.moveTo(cx - r*1.7, cy); ctx.bezierCurveTo(cx - r*2.6, cy + r*1.4*dir, cx - r*4, cy + r*.2*dir, cx - r*3.4, cy - r*.4*dir);
+            ctx.moveTo(cx + r*1.7, cy); ctx.bezierCurveTo(cx + r*2.6, cy + r*1.4*dir, cx + r*4, cy + r*.2*dir, cx + r*3.4, cy - r*.4*dir); ctx.stroke(); }
+        }
+      } else if (it.el === 'v:fr-leaf'){
+        const i2 = t * .45; ctx.lineWidth = s * .005; ctx.strokeRect(x + i2, y + i2, w - 2*i2, h - 2*i2);
+        const sprig = (cx, cy, ang, len) => { ctx.lineWidth = s * .005; ctx.beginPath(); ctx.moveTo(cx, cy);
+          const ex = cx + Math.cos(ang)*len, ey = cy + Math.sin(ang)*len; ctx.quadraticCurveTo(cx + Math.cos(ang + .25)*len*.5, cy + Math.sin(ang + .25)*len*.5, ex, ey); ctx.stroke();
+          ctx.beginPath(); for (let i = 1; i <= 6; i++){ const f = i / 7, px = cx + (ex - cx)*f, py = cy + (ey - cy)*f, L = len * (.28 - f*.12);
+            vLeafPath(ctx, px, py, L, ang + (i % 2 ? -.75 : .75) * (i % 2 ? 1 : 1), .36); } vLeafPath(ctx, ex, ey, len*.16, ang, .36); ctx.fill(); };
+        const L = s * .38, o = i2;
+        sprig(x + o, y + o, 0, L); sprig(x + o, y + o, Math.PI/2, L);
+        sprig(x + w - o, y + h - o, Math.PI, L); sprig(x + w - o, y + h - o, -Math.PI/2, L);
+      } else { // ארט דקו
+        const i1 = s * .006, i2 = t * .6, n = t * .55; ctx.lineWidth = s * .006; ctx.strokeRect(x + i1, y + i1, w - 2*i1, h - 2*i1);
+        ctx.lineWidth = s * .004; ctx.beginPath(); // מלבן פנימי עם פינות מדורגות
+        const X0 = x + i2, Y0 = y + i2, X1 = x + w - i2, Y1 = y + h - i2;
+        ctx.moveTo(X0 + n, Y0); ctx.lineTo(X1 - n, Y0); ctx.lineTo(X1 - n, Y0 + n*.5); ctx.lineTo(X1 - n*.5, Y0 + n*.5); ctx.lineTo(X1 - n*.5, Y0 + n); ctx.lineTo(X1, Y0 + n);
+        ctx.lineTo(X1, Y1 - n); ctx.lineTo(X1 - n*.5, Y1 - n); ctx.lineTo(X1 - n*.5, Y1 - n*.5); ctx.lineTo(X1 - n, Y1 - n*.5); ctx.lineTo(X1 - n, Y1);
+        ctx.lineTo(X0 + n, Y1); ctx.lineTo(X0 + n, Y1 - n*.5); ctx.lineTo(X0 + n*.5, Y1 - n*.5); ctx.lineTo(X0 + n*.5, Y1 - n); ctx.lineTo(X0, Y1 - n);
+        ctx.lineTo(X0, Y0 + n); ctx.lineTo(X0 + n*.5, Y0 + n); ctx.lineTo(X0 + n*.5, Y0 + n*.5); ctx.lineTo(X0 + n, Y0 + n*.5); ctx.closePath(); ctx.stroke();
+        for (const [cx, cy, sx, sy] of [[x + i1, y + i1, 1, 1], [x + w - i1, y + i1, -1, 1], [x + i1, y + h - i1, 1, -1], [x + w - i1, y + h - i1, -1, -1]]){ // מניפה בפינות
+          ctx.beginPath(); for (let k2 = 0; k2 < 5; k2++){ const a = (k2 / 4) * Math.PI / 2, r = i2 * 1.05; ctx.moveTo(cx, cy); ctx.lineTo(cx + sx*Math.cos(a)*r, cy + sy*Math.sin(a)*r); } ctx.stroke(); }
+      }
+      break;
+    }
+    case 'corner': corner(x, y, s, 1, 1, s * .035); break;
+    case 'divider': {
+      const cy = y + h/2, cx = x + w/2, r = h * .32; ctx.lineWidth = Math.max(h * .05, .5);
+      ctx.beginPath(); ctx.moveTo(x, cy); ctx.lineTo(cx - r*3.2, cy); ctx.moveTo(cx + r*3.2, cy); ctx.lineTo(x + w, cy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(cx - r*1.3, cy); ctx.lineTo(cx, cy - r); ctx.lineTo(cx + r*1.3, cy); ctx.lineTo(cx, cy + r); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); for (const d of [-1, 1]){ ctx.moveTo(cx + d*r*1.4, cy); ctx.bezierCurveTo(cx + d*r*2, cy - r*1.3, cx + d*r*3.2, cy - r*.6, cx + d*r*2.6, cy); ctx.bezierCurveTo(cx + d*r*2.3, cy + r*.4, cx + d*r*2, cy + r*.1, cx + d*r*2.2, cy - r*.2); } ctx.stroke();
+      ctx.beginPath(); ctx.arc(x + w*.04, cy, r*.28, 0, Math.PI*2); ctx.arc(x + w*.96, cy, r*.28, 0, Math.PI*2); ctx.fill();
+      break;
+    }
+    case 'sparkle': ctx.beginPath(); vSparkle(ctx, x + w*.4, y + h*.58, s*.4); vSparkle(ctx, x + w*.82, y + h*.2, s*.17); vSparkle(ctx, x + w*.86, y + h*.82, s*.1); ctx.fill(); break;
+  }
+  ctx.restore();
+}
+// מסגרת סביב תמונה: עוטפת את התמונה עם מרווח, כך שהתמונה יושבת בתוך הקו הפנימי
+const VFR_PAD = {'v:fr-classic':.065, 'v:fr-ornate':.095, 'v:fr-leaf':.05, 'v:fr-deco':.075};
+function vFrameBox(p, id){ // הצלע הקצרה של המסגרת = צלע התמונה + 2 מרווחים; המרווח הוא חלק קבוע מהמסגרת
+  const c = VFR_PAD[id] || .07, P2 = c * Math.min(p.w, p.h) / (1 - 2*c);
+  return {x:p.x - P2, y:p.y - P2, w:p.w + 2*P2, h:p.h + 2*P2};
+}
+function vCornerBoxes(p){ const cs = Math.min(p.w, p.h) * .26, o = cs * .5;
+  return [{x:p.x - o, y:p.y - o, w:cs, h:cs, rot:0}, {x:p.x + p.w - cs + o, y:p.y + p.h - cs + o, w:cs, h:cs, rot:180}]; }
+// מקטין את התמונה באותו יחס (בלי לשנות חיתוך) כך שהמסגרת תיכנס לעמוד שלה, רחוק מהקפל ומקו החיתוך
+function vFitPhoto(p, id, G){
+  if (!G || G.cover || id === 'v:cr-scroll') return true;
+  const mg = Math.max(3, G.m * .55), fold = 7, right = p.x + p.w/2 > G.W/2;
+  const R = {x:right ? G.W/2 + fold : mg, y:mg, w:G.W/2 - mg - fold, h:G.H - 2*mg};
+  const c = VFR_PAD[id] || .07, grow = 2 * c / (1 - 2*c), mn = Math.min(p.w, p.h);
+  const f = Math.min(1, R.w / (p.w + grow * mn), R.h / (p.h + grow * mn));
+  if (f < .5) return false;
+  const cx = p.x + p.w/2, cy = p.y + p.h/2; p.w *= f; p.h *= f; p.x = cx - p.w/2; p.y = cy - p.h/2;
+  const b = vFrameBox(p, id);
+  p.x += Math.max(0, R.x - b.x) - Math.max(0, b.x + b.w - R.x - R.w); p.y += Math.max(0, R.y - b.y) - Math.max(0, b.y + b.h - R.y - R.h);
+  return true;
+}
+function vWrapPhoto(items, p, id, extra = {}){
+  for (let i = items.length - 1; i >= 0; i--) if (items[i].t === 'el' && items[i].of === p.id && String(items[i].el).startsWith('v:')) items.splice(i, 1);
+  if (!id) return;
+  const idx = items.indexOf(p) + 1;
+  if (id === 'v:cr-scroll'){ items.splice(idx, 0, ...vCornerBoxes(p).map(a => Object.assign({t:'el', el:id, op:1, of:p.id, deco:1}, a, extra))); return; }
+  const b = vFrameBox(p, id);
+  items.splice(idx, 0, Object.assign({t:'el', el:id, ...b, rot:0, op:1, of:p.id, deco:1}, extra));
+}
+let VORN_TH = null;
+function vornThumbs(){
+  if (VORN_TH) return VORN_TH;
+  VORN_TH = Object.keys(VORN).map(id => { const v = VORN[id], c = document.createElement('canvas'), W = 240, H = Math.round(Math.min(240, 240 / v.ar));
+    c.width = W; c.height = Math.max(40, H); const ctx = c.getContext('2d'); const w = v.ar >= 1 ? W - 16 : (c.height - 16) * v.ar, h = v.ar >= 1 ? w / v.ar : c.height - 16;
+    drawVorn(ctx, {el:id}, (W - w)/2, (c.height - h)/2, w, h); return {id, f:id, c:'vec', vec:true, w:4000, h:Math.round(4000 / v.ar), url:c.toDataURL()}; });
+  return VORN_TH;
+}
+
+/* ---------- עיטור אוטומטי מקצועי ----------
+   במקום "מדבקות": מסגרת זהב וקטורית סביב תמונה בודדת בעמוד, או סלסולי פינה סביב התמונה הראשית.
+   חד בדפוס בכל גודל · לכל היותר כפולה אחת מכל שלוש, אף פעם לא שתיים צמודות ·
+   רק כשיש מקום אמיתי סביב התמונה – לא נוגע בתמונה אחרת, בטקסט, בקפל או בקו החיתוך */
 function hashStr(s){ let h = 2166136261; for (const ch of String(s)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; }
-function bgLum(bg, T){
-  const c = (bg && (bg.color || bg.c1)) || T.bg;
-  const m = /^#?([0-9a-f]{6})$/i.exec(String(c).trim()); if (!m) return T.dark && T.bg === T.dark ? .1 : .8;
-  const n = parseInt(m[1], 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255; return (.2126*r + .7152*g + .0722*b) / 255;
+function autoFrameStyles(){
+  const pj = S.project, T = STYLE_OVR || pj.styleId;
+  if (T === 'modern') return ['v:fr-deco', 'v:fr-classic'];
+  if (pj.event === 'family' || pj.event === 'general' || pj.event === 'newborn') return ['v:fr-leaf', 'v:fr-classic'];
+  return ['v:fr-ornate', 'v:fr-classic'];
 }
 let AE_PROBE = false;
 function autoEls(L, sp, idx){
   const pj = S.project;
-  if (!pj || !pj.autoEls || !ELS.cat || !ELS.cat.length || !L || L.custom) return;
-  if (!sp || sp.fam === 'title' || sp.fam === 'tpl' || idx < 1) return;
-  const bg = L.bg || {};
-  if (bg.type === 'blur' || bg.type === 'img' || bg.type === 'photo') return; // רקע תמונה – עמוס ממילא
+  if (!pj || !pj.autoEls || !L || L.custom) return;
+  if (!sp || sp.fam === 'title' || sp.fam === 'tpl' || sp.fam === 'film' || idx < 1) return;
   const total = PV.plan ? PV.plan.spreads.length : 0;
   if (total && idx >= total - 1) return; // הכפולה האחרונה נשארת נקייה
+  if (L.items.some(i => i.t === 'el' && String(i.el).startsWith('v:'))) return;
   const seed = hashStr(pj.id || 'x');
-  if (!AE_PROBE && !window.AE_ALL){ // תקציב: לכל היותר כפולה אחת מכל שלוש, ואף פעם לא שתיים צמודות
-    const pos = (idx - 1) % 3; if (pos === 2) return;  // בכל קבוצה של 3: מנסים את הראשונה, ואם אין בה מקום – את השנייה
+  if (!AE_PROBE && !window.AE_ALL){ // בכל קבוצה של 3 כפולות: מנסים את הראשונה, ואם אין בה מקום – את השנייה
+    const pos = (idx - 1) % 3; if (pos === 2) return;
     if (pos === 1 && PV.plan){ const prev = PV.plan.spreads[idx - 1];
       if (prev && !prev.custom && prev.fam !== 'title' && prev.fam !== 'tpl'){
         AE_PROBE = true; const keep = CUR_SP_INDEX; let had = false;
         try{ CUR_SP_INDEX = idx - 1; had = layoutSpread(prev).items.some(i => i.auto); } finally{ AE_PROBE = false; CUR_SP_INDEX = keep; }
         if (had) return; } }
   }
-  if (L.items.some(i => i.t === 'el')) return; // כבר יש אלמנט – לא מעמיסים
-
-  const G = L.G, cell = 2, cols = Math.ceil(G.W / cell), rows = Math.ceil(G.H / cell);
-  const occ = new Uint8Array(cols * rows);
-  const mark = (x, y, w, h, pad) => {
-    const c0 = Math.max(0, Math.floor((x - pad) / cell)), c1 = Math.min(cols - 1, Math.ceil((x + w + pad) / cell));
-    const r0 = Math.max(0, Math.floor((y - pad) / cell)), r1 = Math.min(rows - 1, Math.ceil((y + h + pad) / cell));
-    for (let r = r0; r <= r1; r++) occ.fill(1, r*cols + c0, r*cols + c1 + 1);
-  };
-  const safe = Math.max(7, G.m * .55), fold = 9;
-  mark(0, 0, G.W, safe, 0); mark(0, G.H - safe, G.W, safe, 0); mark(0, 0, safe, G.H, 0); mark(G.W - safe, 0, safe, G.H, 0);
-  mark(G.W/2 - fold, 0, fold*2, G.H, 0);
-  for (const it of L.items){
-    if (it.t === 'rect' && it.w * it.h < 40) continue; // קווים דקים לא תופסים מקום
-    const ext = it.rot ? Math.max(it.w, it.h) * Math.abs(Math.sin(it.rot * Math.PI / 180)) * .5 : 0;
-    const pad = it.t === 'photo' ? 4 + (it.shadow ? 3 : 0) : it.t === 'text' ? 5 : 3;
-    mark(it.x - ext, it.y - ext, it.w + ext*2, it.h + ext*2, pad);
-  }
-  // הריבוע הריק הגדול ביותר
-  const dp = new Uint16Array(cols * rows); let best = 0, bc = 0, br = 0;
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++){
-    const i = r*cols + c; if (occ[i]) continue;
-    const v = (r && c) ? 1 + Math.min(dp[i - cols], dp[i - 1], dp[i - cols - 1]) : 1; dp[i] = v;
-    if (v > best){ best = v; bc = c; br = r; }
-  }
-  const side = best * cell;
-  const sx = (bc - best + 1) * cell, sy = (br - best + 1) * cell;
-  const roomy = side >= G.H * .14; // יש שטח ריק אמיתי
-
-  const ev = EVENTS[pj.event] ? pj.event : 'general';
-  const dark = bgLum(bg, G.T) < .45;
-  let pool = (AUTO_EL_SETS[ev] || AUTO_EL_SETS.general)
-    .filter(f => !(dark && AUTO_EL_DARK.has(f) && side >= G.H * .14))
-    .map(f => ELS.cat.find(e => e.f === f + '.webp')).filter(Boolean)
-    .filter(e => { const a = e.w / e.h; return a > .5 && a < 2; });
-  if (!pool.length) return;
-  // ערבוב קבוע לפי האלבום – כל כפולה מקבלת אלמנט אחר
-  pool = pool.map((e, i) => [hashStr(e.f + seed), e]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
-  const el = pool[Math.floor((idx - 1) / 3) % pool.length];
-  if (!roomy) return autoElCorner(L, el, idx, seed); // אין שטח ריק – מדבקה עדינה בפינת תמונה, רק אם אין שם ראש
-
-  const maxMM = el.w * 25.4 / 150; // לא מגדילים מתחת ל-150dpi
-  let s = Math.min(side * .72, G.H * .2, Math.max(el.w, el.h) * 25.4 / 150);
-  if (s < G.H * .09 || maxMM < G.H * .06) return;
-  const a = el.w / el.h, w = a >= 1 ? s : s * a, h = a >= 1 ? s / a : s;
-  // ממקמים בריבוע, נוטים לפינה הקרובה לשוליים ולא לאמצע הדף
-  const pg = sx + side/2 < G.W/2 ? {x:0, w:G.W/2} : {x:G.W/2, w:G.W/2};
-  const towardOut = (sx + side/2) - (pg.x + pg.w/2);
-  let x = sx + (side - w)/2 + Math.sign(towardOut) * (side - w) * .25;
-  let y = sy + (side - h)/2 + Math.sign((sy + side/2) - G.H/2) * (side - h) * .25;
-  const tilt = ((hashStr(el.f + idx) % 9) - 4) * 1.2; // נטייה עדינה ±5°
-  L.items.push({t:'el', el:'b:' + el.f, x, y, w, h, rot:tilt, op:1, deco:1, auto:1});
-}
-
-// מדבקה בפינת תמונה: רובה על התמונה וחלקה בחוץ, רק כשיש מקום פנוי מחוץ לפינה. רק כשאין ראש קרוב, לא על תמונה אחרת/טקסט, ולא ליד החיתוך או הקפל
-function autoElCorner(L, el, idx, seed){
-  const G = L.G, a = el.w / el.h;
-  const s = Math.min(G.H * .13, Math.max(el.w, el.h) * 25.4 / 150); if (s < G.H * .07) return;
-  const w = a >= 1 ? s : s * a, h = a >= 1 ? s / a : s, edge = 4.5, fold = 7;
-  const photos = L.items.filter(it => it.t === 'photo' && (!it.shape || it.shape === 'rect' || it.shape === 'rounded') && Math.abs(it.rot || 0) < 3 && !it.soft && it.w > G.H * .25 && it.h > G.H * .25);
-  const others = L.items.filter(it => it.t === 'text' || it.t === 'el' || it.t === 'photo' || (it.t === 'outline'));
-  const rects = L.items.filter(it => it.t === 'rect' && it.w * it.h >= 40);
+  const G = L.G, edge = 3, fold = 5;
   const hit = (A, B, p = 0) => !(A.x + A.w + p <= B.x || B.x + B.w + p <= A.x || A.y + A.h + p <= B.y || B.y + B.h + p <= A.y);
-  const cands = [];
-  for (const it of photos){
-    const m = META.get(it.id); if (!m) continue;
-    const heads = typeof headBoxes === 'function' ? headBoxes(m) : [];
-    if (!heads.length && (m.cat === 'portrait' || m.cat === 'group')) continue; // לא יודעים איפה הראשים – לא נוגעים
-    const b = it.border || 0, iw = it.w - 2*b, ih = it.h - 2*b - (it.borderB || 0);
-    const cr = coverRect(m.width, m.height, iw / ih, it.fx, it.fy, it.zoom);
-    const HB = heads.map(hb => { const X = v => it.x + b + ((v * m.width - cr.sx) / cr.sw) * iw, Y = v => it.y + b + ((v * m.height - cr.sy) / cr.sh) * ih;
-      return {x:X(hb[0]), y:Y(hb[1]), w:X(hb[2]) - X(hb[0]), h:Y(hb[3]) - Y(hb[1])}; });
-    for (const o of [.3, .2]) for (const [cx, cy] of [[1, 1], [0, 1], [1, 0], [0, 0]]){ // עדיפות: חצי בחוץ, ובפינות התחתונות
-      const x = cx ? it.x + it.w - w * (1 - o) : it.x - w * o, y = cy ? it.y + it.h - h * (1 - o) : it.y - h * o, R = {x, y, w, h};
-      if (x < edge || y < edge || x + w > G.W - edge || y + h > G.H - edge) continue;
-      if (x < G.W/2 + fold && x + w > G.W/2 - fold) continue;
-      if (HB.some(hb => hit(R, hb, 5))) continue;
-      if (others.some(o => o !== it && hit(R, o, 1))) continue;
-      if (rects.some(rc => hit(R, rc) && !(R.x >= rc.x + 1.5 && R.y >= rc.y + 1.5 && R.x + R.w <= rc.x + rc.w - 1.5 && R.y + R.h <= rc.y + rc.h - 1.5))) continue; // לא חוצים קצה של כרטיס/מסגרת
-      cands.push({R, score:o * 10 + (cy ? 2 : 0) + it.w * it.h / (G.H * G.H) * .5});
-    }
+  const inside = (A, R, m = 0) => A.x >= R.x + m && A.y >= R.y + m && A.x + A.w <= R.x + R.w - m && A.y + A.h <= R.y + R.h - m;
+  const okPhoto = (it, maxRot = 6) => it.t === 'photo' && (!it.shape || it.shape === 'rect' || it.shape === 'rounded') && Math.abs(it.rot || 0) <= maxRot && !it.soft && !it.pin && !it.film;
+  const pages = G.cover ? [] : [{x:0, y:0, w:G.W/2, h:G.H}, {x:G.W/2, y:0, w:G.W/2, h:G.H}];
+  const blocks = (b, own) => L.items.some(o => o !== own && !(o.t === 'rect' && (o.w * o.h < 40 || inside(b, o, 1))) && hit(b, o, 1));
+  const styles = autoFrameStyles(), block = Math.floor((idx - 1) / 3), fr = styles[(block + seed) % styles.length];
+  // 1. תמונה בודדת בעמוד – מקבלת מסגרת מעוטרת. אם צריך, התמונה מוקטנת מעט (באותו יחס, בלי לשנות חיתוך) כדי לפנות מקום
+  const mg = Math.max(edge, G.m * .55);
+  for (const pg of pages){
+    const inPg = L.items.filter(o => (o.t === 'photo' || o.t === 'text') && o.x + o.w/2 > pg.x && o.x + o.w/2 < pg.x + pg.w);
+    if (inPg.length !== 1 || !okPhoto(inPg[0])) continue;
+    const p = inPg[0];
+    if (p.x < 1 || p.y < 1 || p.x + p.w > G.W - 1 || p.y + p.h > G.H - 1) continue; // תמונה בגלישה – העיצוב בנוי עליה, לא נוגעים
+    const R = {x:pg.x + (pg.x ? fold + 2 : mg), y:mg, w:pg.w - mg - fold - 2, h:G.H - 2*mg};
+    const c = VFR_PAD[fr] || .07, grow = 2 * c / (1 - 2*c), mn = Math.min(p.w, p.h);
+    const f = Math.min(1, R.w / (p.w + grow * mn), R.h / (p.h + grow * mn));
+    if (f < .72) continue;
+    const q = Object.assign({}, p); const cx = p.x + p.w/2, cy = p.y + p.h/2; q.w = p.w * f; q.h = p.h * f; q.x = cx - q.w/2; q.y = cy - q.h/2;
+    let box = vFrameBox(q, fr);
+    const dx = Math.max(0, R.x - box.x) - Math.max(0, box.x + box.w - R.x - R.w), dy = Math.max(0, R.y - box.y) - Math.max(0, box.y + box.h - R.y - R.h);
+    q.x += dx; q.y += dy; box = vFrameBox(q, fr);
+    const outl = L.items.filter(o => o.t === 'outline' && hit(o, p));
+    const others = L.items.filter(o => o !== p && !outl.includes(o));
+    if (others.some(o => !(o.t === 'rect' && (o.w * o.h < 40 || inside(box, o, 1))) && hit(box, o, 1))) continue;
+    if (outl.length) L.items = L.items.filter(o => !outl.includes(o)); // קו מתאר ישן מתחלף במסגרת
+    Object.assign(p, {x:q.x, y:q.y, w:q.w, h:q.h});
+    L.items.splice(L.items.indexOf(p) + 1, 0, {t:'el', el:fr, ...box, rot:p.rot || 0, op:1, deco:1, auto:1, of:p.id}); return;
   }
-  if (!cands.length) return;
-  cands.sort((p, q) => q.score - p.score);
-  const pick = cands[Math.min(cands.length - 1, (seed + idx) % Math.min(3, cands.length))].R;
-  const tilt = ((hashStr(el.f + idx) % 13) - 6) * 1.5;
-  L.items.push({t:'el', el:'b:' + el.f, x:pick.x, y:pick.y, w:pick.w, h:pick.h, rot:tilt, op:1, deco:1, auto:1, shadow:.25});
+  // 2. סלסולי פינה סביב התמונה הגדולה בכפולה, אם יש סביבה מקום פנוי
+  const big = L.items.filter(it => okPhoto(it, .3)).sort((a, b) => b.w*b.h - a.w*a.h);
+  for (const p of big.slice(0, 2)){
+    if (p.w < G.H * .3 || p.h < G.H * .3) continue;
+    const boxes = vCornerBoxes(p);
+    const ok = boxes.every(b => b.x >= edge && b.y >= edge && b.x + b.w <= G.W - edge && b.y + b.h <= G.H - edge
+      && !(b.x < G.W/2 + fold && b.x + b.w > G.W/2 - fold) && !blocks(b, p));
+    if (!ok) continue;
+    boxes.forEach(b => L.items.push({t:'el', el:'v:cr-scroll', ...b, op:1, deco:1, auto:1, of:p.id}));
+    return;
+  }
 }
 function autoElsCount(){
   if (!PV.plan) return 0; let n = 0; const keep = CUR_SP_INDEX;
-  try{ PV.plan.spreads.forEach((sp, i) => { CUR_SP_INDEX = i; try{ n += layoutSpread(sp).items.filter(x => x.auto).length; }catch(_){} }); } finally{ CUR_SP_INDEX = keep; }
+  try{ PV.plan.spreads.forEach((sp, i) => { CUR_SP_INDEX = i; try{ n += layoutSpread(sp).items.some(x => x.auto) ? 1 : 0; }catch(_){} }); } finally{ CUR_SP_INDEX = keep; }
   return n;
 }
 
