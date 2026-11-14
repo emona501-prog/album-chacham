@@ -3391,7 +3391,7 @@ function edAction(a, btn){
         <div class="ed-row"><span>סוג צל</span><div class="ed-chips">${[['soft', 'רך'], ['hard', 'חד'], ['long', 'ארוך'], ['float', 'מרחף']].map(([v, n]) => `<button data-ss="${v}" class="${(it.shStyle || 'soft') === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         <div class="ed-row"><span>זוהר</span><div class="ed-chips"><button data-gl="none">בלי</button><button data-gl="gold">זהב</button><button data-gl="white">לבן</button></div></div>
         <div class="ed-row"><span>מסגרת פולארויד</span><button class="switch ${it.borderB ? 'on' : ''}" data-pol="1"></button></div>
-        <div class="ed-row"><span>עיטור זהב<br><small style="opacity:.7">חד בדפוס</small></span><div class="ed-chips">${[['', 'בלי'], ['v:rf-baroque', 'בארוק'], ['v:rf-deco', 'ארט דקו'], ['v:fr-ornate', 'מעוטרת'], ['v:fr-classic', 'קלאסית'], ['v:fr-leaf', 'עלים'], ['v:fr-deco', 'קווי דקו'], ['v:cr-scroll', 'פינות']].map(([v, n]) => `<button data-vf="${v}" class="${(edItems().find(o => o.t === 'el' && o.of === it.id && String(o.el).startsWith('v:')) || {el:''}).el === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>`, P => {
+        <div class="ed-row"><span>עיטור זהב<br><small style="opacity:.7">חד בדפוס</small></span><div class="ed-chips">${[['', 'בלי'], ['v:rf-baroque', 'בארוק'], ['v:rf-euca1', 'אקליפטוס'], ['v:rf-euca2', 'אקליפטוס עשיר'], ['v:rf-roses', 'ורדים'], ['v:rf-silver', 'בארוק כסף'], ['v:rf-deco', 'ארט דקו'], ['v:rf-navy', 'דקו כחול'], ['v:fr-ornate', 'מעוטרת'], ['v:fr-classic', 'קלאסית'], ['v:fr-leaf', 'עלים'], ['v:fr-deco', 'קווי דקו'], ['v:cr-scroll', 'פינות']].map(([v, n]) => `<button data-vf="${v}" class="${(edItems().find(o => o.t === 'el' && o.of === it.id && String(o.el).startsWith('v:')) || {el:''}).el === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>`, P => {
         slider(P, '#rB', () => it.border || 0, v => { it.border = v; if (it.borderB) it.borderB = v * 2.6; });
         slider(P, '#rS', () => it.shadow || 0, v => { it.shadow = v; it.glow = null; });
         bindSwatches(P, 'swB', c => { it.borderColor = c; if (!it.border) it.border = 1.2; });
@@ -5972,6 +5972,11 @@ $('colBtn').onclick = openCollages;
 const VORN = {
   'v:rf-baroque':{n:'מסגרת בארוק', kind:'rframe', ar:.8, src:'rf-baroque.webp', C:1000, inn:141, ratio:.34},
   'v:rf-deco':   {n:'מסגרת ארט דקו', kind:'rframe', ar:.8, src:'rf-deco.webp', C:1000, inn:54, ratio:.36},
+  'v:rf-euca1':  {n:'אקליפטוס עדין', kind:'rframe', ar:.8, src:'rf-euca1.webp', C:1058, inn:140, ratio:.36},
+  'v:rf-euca2':  {n:'אקליפטוס עשיר', kind:'rframe', ar:.8, src:'rf-euca2.webp', C:1151, inn:129, ratio:.38},
+  'v:rf-roses':  {n:'ורדים', kind:'rframe', ar:.8, src:'rf-roses.webp', C:814, inn:88, ratio:.32},
+  'v:rf-silver': {n:'בארוק כסף', kind:'rframe', ar:.8, src:'rf-silver.webp', C:885, inn:67, ratio:.33},
+  'v:rf-navy':   {n:'דקו כחול-זהב', kind:'rframe', ar:.8, src:'rf-navy.webp', C:891, inn:133, ratio:.34},
   'v:fr-ornate': {n:'מסגרת מעוטרת', kind:'frame', ar:.8},
   'v:fr-classic':{n:'מסגרת קלאסית', kind:'frame', ar:.8},
   'v:fr-leaf':   {n:'מסגרת עלים', kind:'frame', ar:.8},
@@ -6120,10 +6125,13 @@ function vornThumbs(){
    רק כשיש מקום אמיתי סביב התמונה – לא נוגע בתמונה אחרת, בטקסט, בקפל או בקו החיתוך */
 function hashStr(s){ let h = 2166136261; for (const ch of String(s)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; }
 function autoFrameStyles(){
-  const pj = S.project, T = STYLE_OVR || pj.styleId;
-  if (T === 'modern') return ['v:rf-deco', 'v:fr-deco'];
-  if (pj.event === 'family' || pj.event === 'general' || pj.event === 'newborn') return ['v:fr-leaf', 'v:fr-classic'];
-  return ['v:rf-baroque', 'v:fr-ornate', 'v:rf-baroque', 'v:fr-classic'];
+  const pj = S.project, T = STYLE_OVR || pj.styleId, ev = pj.event;
+  if (T === 'modern') return ['v:rf-deco', 'v:rf-navy', 'v:fr-deco'];
+  if (ev === 'wedding') return ['v:rf-baroque', 'v:rf-euca1', 'v:rf-roses', 'v:rf-euca2', 'v:fr-classic'];
+  if (ev === 'batmitzva') return ['v:rf-roses', 'v:rf-euca1', 'v:rf-baroque', 'v:rf-euca2'];
+  if (ev === 'barmitzva') return ['v:rf-baroque', 'v:rf-silver', 'v:fr-ornate', 'v:rf-baroque', 'v:fr-classic'];
+  if (ev === 'newborn') return ['v:rf-euca1', 'v:rf-roses', 'v:fr-leaf'];
+  return ['v:rf-euca1', 'v:rf-baroque', 'v:fr-leaf', 'v:fr-classic'];
 }
 // האם יש ראש באזור הפינות שמסגרת בארוק מכסה
 function rfHeadClash(p, id){
