@@ -519,6 +519,7 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
     <div class="ctrl-row"><span>בעל השמחה<br><small style="color:var(--muted)" id="starSum"></small></span><button class="mini" id="starBtn">מי הכוכב?</button></div>
     <div class="ctrl-row"><span>כותרות פרק<br><small style="color:var(--muted)" id="scSum">"הריקודים", "החופה"… לפי סוג התמונות</small></span><button class="switch" id="scSw"></button></div>
     <div class="ctrl-row"><span>עיטורים אוטומטיים<br><small style="color:var(--muted)">עיטור וסמל האירוע בפתיחה ובכריכה</small></span><button class="switch" id="decoSw"></button></div>
+    <div class="ctrl-row"><span>אלמנטים אוטומטיים ✨<br><small style="color:var(--muted)">המערכת מוסיפה בעדינות אלמנטים של האירוע רק במקומות ריקים</small></span><button class="switch" id="elsSw"></button></div>
     <div class="ctrl-row hidden" id="bgAllRow"><span>רקע אחיד לכל האלבום<br><small style="color:var(--muted)" id="bgAllSum"></small></span><button class="mini" id="bgAllOff">ביטול</button></div>
     <div class="ctrl-row"><span>ריטוש ומסננים<br><small style="color:var(--muted)" id="rtSum"></small></span><button class="mini" id="rtBtn">הגדרות</button></div>
     <div class="ctrl-row"><span>כריכה קדמית ואחורית<br><small style="color:var(--muted)" id="cvSum"></small></span><button class="mini accent" id="coverBtn">עיצוב הכריכה</button></div>
@@ -1727,6 +1728,7 @@ function layoutSpread0(sp){
     const c = sp.custom; let items = c.items;
     if (c.W !== G.W || c.H !== G.H){ const sx = G.W / c.W, sy = G.H / c.H, sm = Math.min(sx, sy);
       items = items.map(it => Object.assign({}, it, {x:it.x*sx, y:it.y*sy, w:it.w*sx, h:it.h*sy, size:it.size ? it.size*sm : it.size})); }
+    if (!S.project.autoEls) items = items.filter(it => !it.auto); // כיבוי האלמנטים האוטומטיים מנקה אותם גם מכפולות ערוכות
     const Lc = {bg:c.bg, items:items.map(it => it.t === 'photo' && !it.uc ? Object.assign({}, it) : it), G, paper:!!c.paper, loss:0, cut:0, custom:true};
     if (typeof headGuard === 'function' && S.project.headGuard !== false) headGuard(Lc, true); // כפולה ערוכה: רק מזיזים את החיתוך כך שהראשים בפנים. לא נוגעים במה שהמשתמש חתך בעצמו
     return Lc;
@@ -1740,6 +1742,7 @@ function layoutSpread0(sp){
   if (typeof applyFaces === 'function') applyFaces(L);
   if (typeof applyGlobalBg === 'function'){ CUR_SP_INDEX = PV.plan ? Math.max(0, PV.plan.spreads.indexOf(sp)) : 0; applyGlobalBg(L); }
   if (sp.fam === 'title' && typeof autoDeco === 'function') autoDeco(L, 'title');
+  if (typeof autoEls === 'function') autoEls(L, sp, CUR_SP_INDEX);
   return L;
 }
 
@@ -5132,9 +5135,11 @@ async function pickUserBg(cb){
 function updDesignRow(){
   if ($('scSw')){ $('scSw').classList.toggle('on', !!S.project.sceneTitles); const n = sceneCount(); $('scSum').textContent = n ? `זוהו סוגים ב-${n} תמונות` : 'עובד אחרי לימוד "סוג תמונה" במסך הלימוד'; }
   if ($('decoSw')) $('decoSw').classList.toggle('on', S.project.autoDeco !== false);
+  if ($('elsSw')) $('elsSw').classList.toggle('on', !!S.project.autoEls);
   const g = S.project.bgAll; if ($('bgAllRow')){ $('bgAllRow').classList.toggle('hidden', !g); if (g) $('bgAllSum').textContent = g.type === 'tex' ? TEXTURES[g.tex] + ' · ' + (PALETTES[g.pal] || PALETTES.theme).n : 'תמונה'; }
 }
 $('decoSw').onclick = () => { S.project.autoDeco = S.project.autoDeco === false; touchProject(); updDesignRow(); showSpread(PV.cur); paintStrip(); };
+$('elsSw').onclick = () => { S.project.autoEls = !S.project.autoEls; touchProject(); updDesignRow(); showSpread(PV.cur); paintStrip(); if (!S.project.autoEls) return toast('האלמנטים האוטומטיים הוסרו'); const n = autoElsCount(); toast(n ? `נוספו ${n} אלמנטים במקומות שמתאימים להם ✨` : 'העימוד צפוף – לא נמצא מקום שמתאים לאלמנט בלי להעמיס. בכפולות עם פחות תמונות הם יופיעו', 4500); };
 $('bgAllOff').onclick = () => { delete S.project.bgAll; touchProject(); updDesignRow(); showSpread(PV.cur); paintStrip(); };
 
 /* =========================================================
@@ -5949,6 +5954,138 @@ async function openCollages(){
 }
 
 $('colBtn').onclick = openCollages;
+
+/* ---------- מילוי אלמנטים אוטומטי וחכם ----------
+   עקרונות: רק אלמנטים שקשורים לאירוע · רק בשטח ריק אמיתי · לכל היותר אחד בכפולה, וכפולה כן ושתיים לא ·
+   לא על הקפל, לא ליד חיתוך, לא על תמונה או טקסט · בלי חזרות באלבום · לא מגדילים מעבר לאיכות הדפסה */
+const AUTO_EL_SETS = {
+  barmitzva:['e152','e153','e154','e156','e160','e161','e162','e296','e298','e311','e182','e171','e184','e175'],
+  batmitzva:['e198','e201','e202','e210','e212','e196','e223','e175','e184','e006','e030','e033','e249','e182'],
+  wedding:  ['e196','e200','e201','e202','e204','e210','e212','e223','e227','e235','e242','e249','e250','e287','e289','e221'],
+  newborn:  ['e259','e261','e262','e266','e268','e269','e264','e265','e297','e299','e300','e295','e267'],
+  birthday: ['e281','e282','e283','e285','e288','e290','e315','e182','e292','e312'],
+  family:   ['e313','e314','e312','e292','e006','e010','e012','e022','e028','e029','e031','e038','e315'],
+  general:  ['e006','e010','e011','e012','e013','e018','e020','e022','e025','e028','e029','e031','e033','e038','e039','e315']
+};
+// אלמנטים כהים (כחול נייבי) – לא שמים על רקע כהה
+const AUTO_EL_DARK = new Set(['e028','e029','e031','e032','e039','e153','e311','e312','e313','e292','e295','e152']);
+function hashStr(s){ let h = 2166136261; for (const ch of String(s)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; }
+function bgLum(bg, T){
+  const c = (bg && (bg.color || bg.c1)) || T.bg;
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(c).trim()); if (!m) return T.dark && T.bg === T.dark ? .1 : .8;
+  const n = parseInt(m[1], 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255; return (.2126*r + .7152*g + .0722*b) / 255;
+}
+let AE_PROBE = false;
+function autoEls(L, sp, idx){
+  const pj = S.project;
+  if (!pj || !pj.autoEls || !ELS.cat || !ELS.cat.length || !L || L.custom) return;
+  if (!sp || sp.fam === 'title' || sp.fam === 'tpl' || idx < 1) return;
+  const bg = L.bg || {};
+  if (bg.type === 'blur' || bg.type === 'img' || bg.type === 'photo') return; // רקע תמונה – עמוס ממילא
+  const total = PV.plan ? PV.plan.spreads.length : 0;
+  if (total && idx >= total - 1) return; // הכפולה האחרונה נשארת נקייה
+  const seed = hashStr(pj.id || 'x');
+  if (!AE_PROBE && !window.AE_ALL){ // תקציב: לכל היותר כפולה אחת מכל שלוש, ואף פעם לא שתיים צמודות
+    const pos = (idx - 1) % 3; if (pos === 2) return;  // בכל קבוצה של 3: מנסים את הראשונה, ואם אין בה מקום – את השנייה
+    if (pos === 1 && PV.plan){ const prev = PV.plan.spreads[idx - 1];
+      if (prev && !prev.custom && prev.fam !== 'title' && prev.fam !== 'tpl'){
+        AE_PROBE = true; const keep = CUR_SP_INDEX; let had = false;
+        try{ CUR_SP_INDEX = idx - 1; had = layoutSpread(prev).items.some(i => i.auto); } finally{ AE_PROBE = false; CUR_SP_INDEX = keep; }
+        if (had) return; } }
+  }
+  if (L.items.some(i => i.t === 'el')) return; // כבר יש אלמנט – לא מעמיסים
+
+  const G = L.G, cell = 2, cols = Math.ceil(G.W / cell), rows = Math.ceil(G.H / cell);
+  const occ = new Uint8Array(cols * rows);
+  const mark = (x, y, w, h, pad) => {
+    const c0 = Math.max(0, Math.floor((x - pad) / cell)), c1 = Math.min(cols - 1, Math.ceil((x + w + pad) / cell));
+    const r0 = Math.max(0, Math.floor((y - pad) / cell)), r1 = Math.min(rows - 1, Math.ceil((y + h + pad) / cell));
+    for (let r = r0; r <= r1; r++) occ.fill(1, r*cols + c0, r*cols + c1 + 1);
+  };
+  const safe = Math.max(7, G.m * .55), fold = 9;
+  mark(0, 0, G.W, safe, 0); mark(0, G.H - safe, G.W, safe, 0); mark(0, 0, safe, G.H, 0); mark(G.W - safe, 0, safe, G.H, 0);
+  mark(G.W/2 - fold, 0, fold*2, G.H, 0);
+  for (const it of L.items){
+    if (it.t === 'rect' && it.w * it.h < 40) continue; // קווים דקים לא תופסים מקום
+    const ext = it.rot ? Math.max(it.w, it.h) * Math.abs(Math.sin(it.rot * Math.PI / 180)) * .5 : 0;
+    const pad = it.t === 'photo' ? 4 + (it.shadow ? 3 : 0) : it.t === 'text' ? 5 : 3;
+    mark(it.x - ext, it.y - ext, it.w + ext*2, it.h + ext*2, pad);
+  }
+  // הריבוע הריק הגדול ביותר
+  const dp = new Uint16Array(cols * rows); let best = 0, bc = 0, br = 0;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++){
+    const i = r*cols + c; if (occ[i]) continue;
+    const v = (r && c) ? 1 + Math.min(dp[i - cols], dp[i - 1], dp[i - cols - 1]) : 1; dp[i] = v;
+    if (v > best){ best = v; bc = c; br = r; }
+  }
+  const side = best * cell;
+  const sx = (bc - best + 1) * cell, sy = (br - best + 1) * cell;
+  const roomy = side >= G.H * .14; // יש שטח ריק אמיתי
+
+  const ev = EVENTS[pj.event] ? pj.event : 'general';
+  const dark = bgLum(bg, G.T) < .45;
+  let pool = (AUTO_EL_SETS[ev] || AUTO_EL_SETS.general)
+    .filter(f => !(dark && AUTO_EL_DARK.has(f) && side >= G.H * .14))
+    .map(f => ELS.cat.find(e => e.f === f + '.webp')).filter(Boolean)
+    .filter(e => { const a = e.w / e.h; return a > .5 && a < 2; });
+  if (!pool.length) return;
+  // ערבוב קבוע לפי האלבום – כל כפולה מקבלת אלמנט אחר
+  pool = pool.map((e, i) => [hashStr(e.f + seed), e]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+  const el = pool[Math.floor((idx - 1) / 3) % pool.length];
+  if (!roomy) return autoElCorner(L, el, idx, seed); // אין שטח ריק – מדבקה עדינה בפינת תמונה, רק אם אין שם ראש
+
+  const maxMM = el.w * 25.4 / 150; // לא מגדילים מתחת ל-150dpi
+  let s = Math.min(side * .72, G.H * .2, Math.max(el.w, el.h) * 25.4 / 150);
+  if (s < G.H * .09 || maxMM < G.H * .06) return;
+  const a = el.w / el.h, w = a >= 1 ? s : s * a, h = a >= 1 ? s / a : s;
+  // ממקמים בריבוע, נוטים לפינה הקרובה לשוליים ולא לאמצע הדף
+  const pg = sx + side/2 < G.W/2 ? {x:0, w:G.W/2} : {x:G.W/2, w:G.W/2};
+  const towardOut = (sx + side/2) - (pg.x + pg.w/2);
+  let x = sx + (side - w)/2 + Math.sign(towardOut) * (side - w) * .25;
+  let y = sy + (side - h)/2 + Math.sign((sy + side/2) - G.H/2) * (side - h) * .25;
+  const tilt = ((hashStr(el.f + idx) % 9) - 4) * 1.2; // נטייה עדינה ±5°
+  L.items.push({t:'el', el:'b:' + el.f, x, y, w, h, rot:tilt, op:1, deco:1, auto:1});
+}
+
+// מדבקה בפינת תמונה: רובה על התמונה וחלקה בחוץ, רק כשיש מקום פנוי מחוץ לפינה. רק כשאין ראש קרוב, לא על תמונה אחרת/טקסט, ולא ליד החיתוך או הקפל
+function autoElCorner(L, el, idx, seed){
+  const G = L.G, a = el.w / el.h;
+  const s = Math.min(G.H * .13, Math.max(el.w, el.h) * 25.4 / 150); if (s < G.H * .07) return;
+  const w = a >= 1 ? s : s * a, h = a >= 1 ? s / a : s, edge = 4.5, fold = 7;
+  const photos = L.items.filter(it => it.t === 'photo' && (!it.shape || it.shape === 'rect' || it.shape === 'rounded') && Math.abs(it.rot || 0) < 3 && !it.soft && it.w > G.H * .25 && it.h > G.H * .25);
+  const others = L.items.filter(it => it.t === 'text' || it.t === 'el' || it.t === 'photo' || (it.t === 'outline'));
+  const rects = L.items.filter(it => it.t === 'rect' && it.w * it.h >= 40);
+  const hit = (A, B, p = 0) => !(A.x + A.w + p <= B.x || B.x + B.w + p <= A.x || A.y + A.h + p <= B.y || B.y + B.h + p <= A.y);
+  const cands = [];
+  for (const it of photos){
+    const m = META.get(it.id); if (!m) continue;
+    const heads = typeof headBoxes === 'function' ? headBoxes(m) : [];
+    if (!heads.length && (m.cat === 'portrait' || m.cat === 'group')) continue; // לא יודעים איפה הראשים – לא נוגעים
+    const b = it.border || 0, iw = it.w - 2*b, ih = it.h - 2*b - (it.borderB || 0);
+    const cr = coverRect(m.width, m.height, iw / ih, it.fx, it.fy, it.zoom);
+    const HB = heads.map(hb => { const X = v => it.x + b + ((v * m.width - cr.sx) / cr.sw) * iw, Y = v => it.y + b + ((v * m.height - cr.sy) / cr.sh) * ih;
+      return {x:X(hb[0]), y:Y(hb[1]), w:X(hb[2]) - X(hb[0]), h:Y(hb[3]) - Y(hb[1])}; });
+    for (const o of [.3, .2]) for (const [cx, cy] of [[1, 1], [0, 1], [1, 0], [0, 0]]){ // עדיפות: חצי בחוץ, ובפינות התחתונות
+      const x = cx ? it.x + it.w - w * (1 - o) : it.x - w * o, y = cy ? it.y + it.h - h * (1 - o) : it.y - h * o, R = {x, y, w, h};
+      if (x < edge || y < edge || x + w > G.W - edge || y + h > G.H - edge) continue;
+      if (x < G.W/2 + fold && x + w > G.W/2 - fold) continue;
+      if (HB.some(hb => hit(R, hb, 5))) continue;
+      if (others.some(o => o !== it && hit(R, o, 1))) continue;
+      if (rects.some(rc => hit(R, rc) && !(R.x >= rc.x + 1.5 && R.y >= rc.y + 1.5 && R.x + R.w <= rc.x + rc.w - 1.5 && R.y + R.h <= rc.y + rc.h - 1.5))) continue; // לא חוצים קצה של כרטיס/מסגרת
+      cands.push({R, score:o * 10 + (cy ? 2 : 0) + it.w * it.h / (G.H * G.H) * .5});
+    }
+  }
+  if (!cands.length) return;
+  cands.sort((p, q) => q.score - p.score);
+  const pick = cands[Math.min(cands.length - 1, (seed + idx) % Math.min(3, cands.length))].R;
+  const tilt = ((hashStr(el.f + idx) % 13) - 6) * 1.5;
+  L.items.push({t:'el', el:'b:' + el.f, x:pick.x, y:pick.y, w:pick.w, h:pick.h, rot:tilt, op:1, deco:1, auto:1, shadow:.25});
+}
+function autoElsCount(){
+  if (!PV.plan) return 0; let n = 0; const keep = CUR_SP_INDEX;
+  try{ PV.plan.spreads.forEach((sp, i) => { CUR_SP_INDEX = i; try{ n += layoutSpread(sp).items.filter(x => x.auto).length; }catch(_){} }); } finally{ CUR_SP_INDEX = keep; }
+  return n;
+}
 
 /* =========================================================
    הפעלה
