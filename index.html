@@ -401,6 +401,11 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
 .topbar .brand{flex:0 0 auto;white-space:nowrap}
 #projChip{min-width:0;flex:0 1 auto;overflow:hidden}#projChipTxt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .chip.bulb{flex:0 0 auto}
+
+#paper{overflow:hidden}
+#paper.zoomed,.lb-stage.zoomed,.bk-stage.zoomed{touch-action:none}
+.bk-stage{overflow:hidden}
+.fs canvas{touch-action:none}
 </style>
 </head>
 <body>
@@ -501,6 +506,7 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
   </div>
   <div class="strip" id="strip"></div>
   <div class="ctrl">
+    <div class="ctrl-row"><span>כיוון האלבום<br><small style="color:var(--muted)">עברית נפתח מימין · אנגלית נפתח משמאל</small></span><div class="seg" id="dirSeg"><button data-dir="rtl">עברית</button><button data-dir="ltr">אנגלית</button></div></div>
     <div class="ctrl-row"><span>סוג האירוע<br><small style="color:var(--muted)" id="evSum"></small></span><button class="mini" id="evBtn">שינוי</button></div>
     <div class="ctrl-row"><span>בעל השמחה<br><small style="color:var(--muted)" id="starSum"></small></span><button class="mini" id="starBtn">מי הכוכב?</button></div>
     <div class="ctrl-row"><span>כותרות פרק<br><small style="color:var(--muted)" id="scSum">"הריקודים", "החופה"… לפי סוג התמונות</small></span><button class="switch" id="scSw"></button></div>
@@ -1134,10 +1140,12 @@ function openLightbox(idx){
     const dx = e.changedTouches[0].clientX - sx, dy = e.changedTouches[0].clientY - sy;
     if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) lbGo(dx > 0 ? 1 : -1); // RTL: החלקה ימינה = הבאה
   }, {passive:true});
+  pinchZoom(stage, () => el.querySelector('.lb-stage img'));
   lbShow();
 }
 function lbGo(d){ if (!LB) return; const n = LB.idx + d; if (n < 0 || n >= S.photos.length) return; LB.idx = n; lbShow(); }
 async function lbShow(){
+  if (LB) zoomReset(LB.el.querySelector('.lb-stage'));
   const p = S.photos[LB.idx]; if (!p) return;
   const tok = ++LB.token;
   const img = LB.el.querySelector('img');
@@ -1545,7 +1553,7 @@ function genSequence(ids, G, v){
 }
 
 function genTitle(ids, G, v){
-  const T = G.T, hs = v % 2 ? 'L' : 'R', os = opp(hs), st = Math.floor(v / 2) % 2;
+  const T = G.T, hs = 'L', os = opp(hs), st = v % 2; // הכותרת תמיד בעמוד הראשון (ימין בעברית; באנגלית העימוד כולו מתהפך)
   ids = pickBest(ids, G.pw / G.H); const hero = ids[0], extra = ids.slice(1, 3);
   const items = []; let bg;
   if (st === 0){
@@ -1679,6 +1687,30 @@ function layoutSpread(sp){
   const prev = STYLE_OVR; STYLE_OVR = (sp && sp.kind !== 'cover' && sp.styleId) || null;
   try{ return layoutSpread0(sp); } finally{ STYLE_OVR = prev; }
 }
+/* כלל עיצוב: כמה שיותר אנשים בתמונה (והפנים קטנות יותר) – המשבצת צריכה להיות גדולה יותר.
+   מסדר מחדש את התמונות בין המשבצות של הכפולה: הגדולה ביותר לתמונה הקבוצתית, בלי לפגוע מדי בהתאמת הצורה */
+function photoNeed(id){
+  const m = META.get(id); if (!m) return 0;
+  const H = typeof headBoxes === 'function' ? headBoxes(m) : (m.faces || []).map(f => [f.x - f.w/2, 0, f.x + f.w/2, 0]);
+  const n = H.length; if (!n) return m.cat === 'detail' ? -.3 : 0;
+  const minW = Math.min(...H.map(h => h[2] - h[0])), spread = Math.max(...H.map(h => h[2])) - Math.min(...H.map(h => h[0]));
+  return Math.min(n, 12) * .28 + clamp(.07 / Math.max(minW, .01), 0, 4) * .35 + (n >= 4 ? spread * .8 : 0) + (m.star ? .5 : 0);
+}
+function sizeByPeople(L){
+  const ph = L.items.filter(i => i.t === 'photo' && META.get(i.id));
+  if (ph.length < 2) return;
+  const area = i => i.w * i.h, maxA = Math.max(...ph.map(area)), minA = Math.min(...ph.map(area));
+  if (maxA < minA * 1.5) return; // כל המשבצות בערך באותו גודל
+  const loss = (it, id) => { const m = META.get(id), b = it.border || 0, fa = it.shape === 'circle' ? 1 : (it.w - 2*b) / Math.max(.1, it.h - 2*b - (it.borderB || 0)), ia = m.width / m.height; return 1 - Math.min(fa, ia) / Math.max(fa, ia); };
+  const need = new Map(ph.map(i => [i.id, photoNeed(i.id)]));
+  const score = (it, id) => need.get(id) * (area(it) / maxA) * 1.6 - loss(it, id) * 2.4;
+  const before = ph.reduce((a, it) => a + score(it, it.id), 0);
+  const slots = ph.slice().sort((a, b) => area(b) - area(a)), left = new Set(ph.map(i => i.id)), asg = new Map();
+  for (const it of slots){ let best = null, bs = -1e9; for (const id of left){ const v = score(it, id); if (v > bs){ bs = v; best = id; } } asg.set(it, best); left.delete(best); }
+  const after = slots.reduce((a, it) => a + score(it, asg.get(it)), 0);
+  if (after < before + .15) return;
+  slots.forEach(it => { const id = asg.get(it); if (id !== it.id){ it.id = id; it.fx = .5; it.fy = .4; it.zoom = 1; } });
+}
 function layoutSpread0(sp){
   if (sp.kind === 'cover') return layoutCover(sp);
   const G = geo(), f = FAMS[sp.fam] || FAMS.heroGrid;
@@ -1686,12 +1718,16 @@ function layoutSpread0(sp){
     const c = sp.custom; let items = c.items;
     if (c.W !== G.W || c.H !== G.H){ const sx = G.W / c.W, sy = G.H / c.H, sm = Math.min(sx, sy);
       items = items.map(it => Object.assign({}, it, {x:it.x*sx, y:it.y*sy, w:it.w*sx, h:it.h*sy, size:it.size ? it.size*sm : it.size})); }
-    return {bg:c.bg, items, G, paper:!!c.paper, loss:0, cut:0, custom:true};
+    const Lc = {bg:c.bg, items:items.map(it => it.t === 'photo' && !it.uc ? Object.assign({}, it) : it), G, paper:!!c.paper, loss:0, cut:0, custom:true};
+    if (typeof headGuard === 'function' && S.project.headGuard !== false) headGuard(Lc, true); // כפולה ערוכה: רק מזיזים את החיתוך כך שהראשים בפנים. לא נוגעים במה שהמשתמש חתך בעצמו
+    return Lc;
   }
   CUR_SP = sp;
   const L = f.gen(sp.ids.slice(), G, sp.v || 0);
   CUR_SP = null;
   L.paper = G.T.paper; L.G = G;
+  if (sp.fam !== 'title') sizeByPeople(L); // תמונה עם הרבה אנשים מקבלת משבצת גדולה
+  if (typeof isLTR === 'function' && isLTR()){ mirrorItems(L.items, G.W); mirrorBg(L.bg); }
   if (typeof applyFaces === 'function') applyFaces(L);
   if (typeof applyGlobalBg === 'function'){ CUR_SP_INDEX = PV.plan ? Math.max(0, PV.plan.spreads.indexOf(sp)) : 0; applyGlobalBg(L); }
   if (sp.fam === 'title' && typeof autoDeco === 'function') autoDeco(L, 'title');
@@ -2118,10 +2154,11 @@ async function openPage(){
   await loadFonts();
   computeSelection();
   let forceRe = false;
+  if (POSE.active) await waitPeople();
   if (!S.project.event) await askEvent();
   { const ev = EVENTS[S.project.event];
     if (ev && ev.k && !S.project.starAsked){
-      if (PPL.active) await waitPeople();
+      if (PPL.active || POSE.active) await waitPeople();
       if (!PPL.clusters) clusterPeople();
       if (PPL.clusters && PPL.clusters.length) forceRe = await askStar();
     } else if (!PPL.clusters) clusterPeople();
@@ -2144,6 +2181,7 @@ $('pgBack').onclick = () => history.back();
 
 function stageWidth(){ return Math.min($('viewPage').clientWidth - 36, 900); }
 async function showSpread(i){
+  zoomReset($('paper'));
   const n = PV.plan.spreads.length;
   PV.cur = clamp(i, 0, n - 1);
   const sp = PV.plan.spreads[PV.cur], G = geo();
@@ -2151,7 +2189,7 @@ async function showSpread(i){
   $('pgInfo').textContent = `${n} כפולות · כפולה ${L}${G.W/10}×${G.H/10}⁩ ס״מ`;
   $('spCount').textContent = `כפולה ${PV.cur + 1} מתוך ${n}`;
   $('spFam').textContent = sp.custom ? `✎ נערכה ידנית · ${sp.ids.length} תמונות` : `${sp.cat && PV.cur ? CAT_NAMES[sp.cat] + ' · ' : ''}${FAMS[sp.fam].name} · ${sp.ids.length} תמונות`;
-  if ($('cvSum')) $('cvSum').textContent = coverSummary(); updRtRow(); updDesignRow();
+  if ($('cvSum')) $('cvSum').textContent = coverSummary(); updRtRow(); updDesignRow(); updDirRow();
   $('spPrev').disabled = PV.cur === 0; $('spNext').disabled = PV.cur === n - 1; $('spFirst').disabled = PV.cur === 0; $('spLast').disabled = PV.cur === n - 1;
   document.querySelectorAll('#strip .th').forEach((t, j) => t.classList.toggle('on', j === PV.cur));
   const on = $('strip').children[PV.cur]; // גלילה אופקית בלבד – בלי להקפיץ את העמוד
@@ -2279,6 +2317,7 @@ function openFS(){
     <button data-a="next" aria-label="הבאה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 18l-6-6 6-6"/></svg></button>
     <button data-a="alt" class="alt">עיצוב אחר</button></div>`;
   document.body.appendChild(el); FS = {el};
+  { const c = el.querySelector('canvas'); pinchZoom(c, () => c); }
   history.pushState({fs:1}, '');
   el.onclick = e => {
     const a = e.target.closest('[data-a]'); if (!a) return;
@@ -2291,6 +2330,7 @@ function openFS(){
 }
 function renderFS(){
   if (!FS) return;
+  zoomReset(FS.el.querySelector('canvas'));
   const G = geo(), ar = G.W / G.H, portrait = innerHeight > innerWidth;
   const availW = portrait ? innerHeight - 100 : innerWidth - 24, availH = portrait ? innerWidth - 20 : innerHeight - 90;
   const cssW = Math.min(availW, availH * ar);
@@ -2799,16 +2839,16 @@ function applyFacesOne(L, it, m, ff, G, zone){
   if (bx[0]*m.width < s.sx - 2 || bx[2]*m.width > s.sx + s.sw + 2 || Math.max(0, bx[1] - pad)*m.height < s.sy - 2 || bx[3]*m.height > s.sy + s.sh + 2) L.cut++;
 }
 /* שומר הראשים – כלל ברזל: אם יש ספק שראש ייחתך, המסגרת מקבלת את הפרופורציה של התמונה והתמונה מוצגת שלמה, בלי שום חיתוך */
-function headGuard(L){
+function headGuard(L, soft){
   L.fit = 0;
   for (const it of L.items){
-    if (it.t !== 'photo') continue;
+    if (it.t !== 'photo' || (soft && it.uc)) continue;
     const m = META.get(it.id); if (!m) continue;
     const b = it.border || 0, bb = it.borderB || 0, iw = it.w - 2*b, ih = it.h - 2*b - bb; if (iw <= 0 || ih <= 0) continue;
     const fa = it.shape === 'circle' ? 1 : iw / ih, ia = m.width / m.height, loss = 1 - Math.min(fa, ia) / Math.max(fa, ia);
     if (loss < .03) continue; // כמעט בלי חיתוך – אין סכנה
     // כל מה שעשוי להיות ראש, גם זיהויים חלשים. תיבת ראש = פנים + שיער/כובע מלמעלה + סנטר וצוואר
-    const heads = (m.faces || []).filter(f => f.w >= .015 && (f.s || 1) >= .5).map(f => [f.x - f.w*.7, f.y - f.h*1.0, f.x + f.w*.7, f.y + f.h*.8].map(v => clamp(v, 0, 1)));
+    const heads = headBoxes(m);
     const win = () => { const s = coverRect(m.width, m.height, fa, it.fx, it.fy, it.zoom); return [s.sx / m.width, s.sy / m.height, (s.sx + s.sw) / m.width, (s.sy + s.sh) / m.height]; };
     const inside = w => heads.every(h => h[0] >= w[0] - .004 && h[1] >= w[1] - .004 && h[2] <= w[2] + .004 && h[3] <= w[3] + .004);
     let ok = false;
@@ -2823,7 +2863,11 @@ function headGuard(L){
         const w = win(), U2 = x => ((x - w[0]) / (w[2] - w[0])) * 2 - 1, V2 = y => ((y - w[1]) / (w[3] - w[1])) * 2 - 1;
         if (!heads.every(h => [[h[0], h[1]], [h[2], h[1]], [h[0], h[3]], [h[2], h[3]]].every(([x, y]) => shapeFits(it.shape, U2(x), V2(y))))) ok = false;
       }
-    } else ok = loss < .2 && !(m.cat === 'portrait' || m.cat === 'group'); // לא זוהו פנים: חיתוך קל מותר; חיתוך משמעותי – לא מסתכנים
+    } else { // לא זוהו ראשים: חיתוך קל מותר, אבל בחיתוך מלמעלה-למטה תמיד שומרים על החלק העליון (שם הראש, אם יש)
+      ok = loss < .2 && !(m.cat === 'portrait' || m.cat === 'group');
+      if (ok && fa > ia){ const s0 = coverRect(m.width, m.height, fa, it.fx, it.fy, it.zoom); if (s0.sy > 1) it.fy = (s0.sh / 2) / m.height; }
+      if (ok && soft) continue;
+    }
     if (ok) continue;
     if (it.shape && it.shape !== 'rect' && it.shape !== 'rounded') it.shape = 'rect';
     let nw = iw, nh = ih; if (ia > iw / ih) nh = iw / ia; else nw = ih * ia;
@@ -2901,7 +2945,7 @@ function freezeSpread(sp){
 function edItems(){ return ED.sp.custom.items; }
 function edSel(){ return ED.sel >= 0 ? edItems()[ED.sel] : null; }
 function syncIds(sp){ sp.ids = sp.custom.items.filter(i => i.t === 'photo').map(i => i.id); }
-function pushUndo(){ ED.undo.push(JSON.stringify(ED.sp.custom)); if (ED.undo.length > 500) ED.undo.shift(); ED.redo = []; edTopState(); }
+function pushUndo(){ ED.changed = true; ED.undo.push(JSON.stringify(ED.sp.custom)); if (ED.undo.length > 500) ED.undo.shift(); ED.redo = []; edTopState(); }
 function commit(){ syncIds(ED.sp); savePlan(); ED.dirty = true; edTopState(); }
 function edUndo(dir){
   const from = dir < 0 ? ED.undo : ED.redo, to = dir < 0 ? ED.redo : ED.undo;
@@ -2915,9 +2959,11 @@ async function openEditor(arg){
   if (ED.open || !PV.plan) return;
   const isCover = !!(arg && arg.kind === 'cover');
   const sp = isCover ? arg : PV.plan.spreads[PV.cur];
+  const wasCustom = !!sp.custom;
   freezeSpread(sp);
+  if (!isCover && wasCustom && S.project.headGuard !== false){ try{ headGuard({items:sp.custom.items, G:geo()}, true); }catch(_){} } // כפולה ערוכה ישנה: מתקנים ראשים חתוכים גם בעורך
   { const L = layoutSpread(sp); if (sp.custom.W !== L.G.W || sp.custom.H !== L.G.H){ sp.custom.items = L.items; sp.custom.W = L.G.W; sp.custom.H = L.G.H; } }
-  Object.assign(ED, {open:true, sp, cover:isCover, view:'spread', sel:-1, crop:false, undo:[], redo:[], dirty:true, guides:[]});
+  Object.assign(ED, {open:true, sp, wasCustom, changed:false, cover:isCover, view:'spread', sel:-1, crop:false, undo:[], redo:[], dirty:true, guides:[]});
   savePlan();
   const el = document.createElement('div'); el.className = 'ed';
   el.innerHTML = `
@@ -2954,7 +3000,9 @@ function closeEditor(){
   ED.open = false; ED.el.remove(); document.body.classList.remove('editing');
   ED.imgs.forEach(e => e.bmp && e.bmp.close()); ED.imgs.clear();
   if (ED.off){ ED.off.width = ED.off.height = 1; }
-  syncIds(ED.sp); savePlan();
+  if (!ED.wasCustom && !ED.changed) delete ED.sp.custom; // רק הצצה בעורך, בלי שינוי – הכפולה נשארת אוטומטית (ושומר הראשים ממשיך לפעול עליה)
+  else syncIds(ED.sp);
+  savePlan();
   if (ED.rtChanged){ ED.rtChanged = false; if (PV.plan) setTimeout(paintStrip, 50); }
   if (ED.cover){ if (CV) renderCover(); return; }
   showSpread(PV.cur); repaintStripItem(PV.cur);
@@ -3110,7 +3158,7 @@ function edBindPointer(){
     const p = edToMM(e); ED.ptrs.set(e.pointerId, p);
     if (ED.ptrs.size === 2){ edPinchStart(); return; }
     const hd = edHitHandle(p);
-    if (hd){ const it = edSel(); ED.drag = {type:hd.rot ? 'rotate' : hd.move ? 'move' : 'resize', hd, p0:p, s:{...it}, pushed:false}; return; }
+    if (hd){ const it = edSel(); ED.drag = {type:hd.rot ? 'rotate' : hd.move ? 'move' : 'resize', hd, p0:p, s:{...it}, pushed:false}; if (!hd.rot && !hd.move && it.t === 'photo') it.uc = 1; return; }
     const i = edHit(p);
     const now = Date.now();
     if (i >= 0 && i === ED.sel && edItems()[i].t === 'text' && now - (ED.lastTap || 0) < 350){ edEditText(); ED.lastTap = 0; return; }
@@ -3162,7 +3210,7 @@ function edPan(it, s, dx, dy){ // הזזת התמונה בתוך המסגרת
   const b = it.border || 0, iw = it.w - 2*b, ih = it.h - 2*b, fa = it.shape === 'circle' ? 1 : iw / ih;
   const r = coverRect(m.width, m.height, fa, .5, .5, it.zoom || 1), wN = r.sw / m.width, hN = r.sh / m.height;
   const l = toLocal({...s, x:0, y:0, w:0, h:0}, {x:dx, y:dy});
-  it.fx = clamp(s.fx - l.x / iw * wN, wN/2, 1 - wN/2); it.fy = clamp(s.fy - l.y / ih * hN, hN/2, 1 - hN/2);
+  it.fx = clamp(s.fx - l.x / iw * wN, wN/2, 1 - wN/2); it.fy = clamp(s.fy - l.y / ih * hN, hN/2, 1 - hN/2); it.uc = 1;
 }
 function edPinchStart(){
   const it = edSel(); if (!it){ ED.pinch = null; return; }
@@ -3288,10 +3336,10 @@ function edAction(a, btn){
     });
     case 'crop': ED.crop = !ED.crop; edTools(); if (ED.crop){ edPanel(`<div class="ed-row"><span>זום</span><input type="range" min="1" max="4" step=".01" class="ed-rg" id="rZoom"></div>
         <div class="ed-row"><button class="ed-chip" data-g="face">מרכוז על הפנים</button><button class="ed-chip" data-g="fit">איפוס</button></div>`, P => {
-        slider(P, '#rZoom', () => it.zoom || 1, v => { it.zoom = v; });
+        slider(P, '#rZoom', () => it.zoom || 1, v => { it.zoom = v; it.uc = 1; });
         P.addEventListener('click', e => { const b = e.target.closest('[data-g]'); if (!b) return; pushUndo();
           if (b.dataset.g === 'face'){ const ff = faceFocus(META.get(it.id) || {}); if (ff){ it.fx = ff.fx; it.fy = ff.fy; } else toast('לא זוהו פנים בתמונה הזו'); }
-          if (b.dataset.g === 'fit'){ it.zoom = 1; it.fx = .5; it.fy = .4; P.querySelector('#rZoom').value = 1; }
+          if (b.dataset.g === 'fit'){ delete it.uc; it.zoom = 1; it.fx = .5; it.fy = .4; P.querySelector('#rZoom').value = 1; }
           commit(); edRender(); });
       }); } edRender(); return;
     case 'swap': return pickPhoto('החלפת תמונה', id => {
@@ -3744,7 +3792,7 @@ async function renderCover(){
   body.onclick = async e => {
     const ty = e.target.closest('[data-type]'), a = e.target.closest('[data-a]'), d = e.target.closest('[data-d]'), m = e.target.closest('[data-mat]'), dc = e.target.closest('[data-dc]');
     if (ty){ saveCoverCfg({type:ty.dataset.type}); const cs = PV.plan.cover; delete cs.custom; savePlan(); renderCover(); return; }
-    if (d){ saveCoverCfg({dir:d.dataset.d}); delete PV.plan.cover.custom; savePlan(); renderCover(); return; }
+    if (d){ await setAlbumDir(d.dataset.d); saveCoverCfg({dir:d.dataset.d}); delete PV.plan.cover.custom; savePlan(); renderCover(); return; }
     if (m){ saveCoverCfg({material:m.dataset.mat}); renderCover(); return; }
     if (dc){ saveCoverCfg({debossColor:dc.dataset.dc}); renderCover(); return; }
     if (!a) return;
@@ -4074,6 +4122,7 @@ function torsoStats(bmp, f){
 /* ---------- ניתוח אנשים (רץ אחרי הניתוח הרגיל) ---------- */
 async function startPeople(){
   if (PPL.active || !S.project || AN.active) return;
+  await startPose(); if (!S.project) return;
   const todo = S.photos.filter(p => (p.pv || 0) < PPL_VER && Array.isArray(p.faces) && p.faces.length);
   if (!todo.length){ clusterPeople(); setTimeout(startScenes, 200); return; }
   const fa = await faInit(); if (!fa){ clusterPeople(); setTimeout(startScenes, 200); return; }
@@ -4427,10 +4476,10 @@ async function openTeach(){
 function waitPeople(){
   return new Promise(res => {
     const s = document.createElement('div'); s.className = 'scrim modal-scrim'; s.id = 'pplWait';
-    s.innerHTML = `<div class="modal"><h3>מזהה את האנשים באלבום</h3><div class="ld-wrap">${LOADER}</div><p>כדי לדעת מי בעל השמחה. <b>${PPL.done} / ${PPL.total}</b></p>
+    s.innerHTML = `<div class="modal"><h3>מזהה את האנשים באלבום</h3><p style="margin:0 0 4px">כדי שאף ראש לא ייחתך</p><div class="ld-wrap">${LOADER}</div><p>כדי לדעת מי בעל השמחה. <b>${PPL.done} / ${PPL.total}</b></p>
       <ul class="ex-steps"><li><span class="spinner"></span><span>עובד…</span></li></ul><div class="acts"><button class="btn ghost" data-a="skip">דילוג</button></div></div>`;
     document.body.appendChild(s);
-    const t = setInterval(() => { if (!PPL.active){ done(); } }, 400);
+    const t = setInterval(() => { if (!PPL.active && !POSE.active){ done(); } }, 400);
     const done = () => { clearInterval(t); s.remove(); res(); };
     s.onclick = e => { if (e.target.closest('[data-a]')) done(); };
   });
@@ -5403,6 +5452,7 @@ HELP.book = ['תצוגת ספר', [
   ['דפדוף', 'לחצו על הצד השמאלי של הספר (או "הבא") כדי להפוך דף קדימה, ועל הצד הימני כדי לחזור. אפשר גם להחליק עם האצבע.'],
   ['ניגון אוטומטי', 'הספר מדפדף לבד מהכריכה הקדמית ועד הגב.'],
   ['הורדה כסרטון', 'מקליט את הדפדוף לקובץ וידאו לשיתוף, עם סימן המים "חי אפליקציות" על העמודים. ההקלטה נמשכת כמה שניות לכל כפולה – השאירו את המסך פתוח.']]];
+function flipCv(src){ const c = document.createElement('canvas'); c.width = src.width; c.height = src.height; const x = c.getContext('2d'); x.translate(c.width, 0); x.scale(-1, 1); x.drawImage(src, 0, 0); return c; }
 async function bkCovers(){
   const c = coverCfg(), t = COVER_TYPES[c.type], sp = ensureCover(), sz = sizeById(S.project.sizeId);
   const H = 640, W = Math.round(H * sz.w / sz.h), mk = () => { const cv = document.createElement('canvas'); cv.width = W; cv.height = H; return cv; };
@@ -5413,10 +5463,11 @@ async function bkCovers(){
   else { const m = document.createElement('canvas'); await drawCoverMock(m, W); front.getContext('2d').drawImage(m, 0, 0, W, H);
     const x = back.getContext('2d'); x.fillStyle = c.material; x.fillRect(0, 0, W, H); }
   BK.front = front; BK.back = back;
+  if (isLTR()){ BK.front = flipCv(front); BK.back = flipCv(back); }
 }
 async function bkEnsure(...idx){
   for (const i of idx){ if (i < 0 || i >= BK.n || BK.cache.has(i)) continue;
-    const cv = document.createElement('canvas'); await paint(cv, PV.plan.spreads[i], 1200, {maxDpr:1}); BK.cache.set(i, cv);
+    let cv = document.createElement('canvas'); await paint(cv, PV.plan.spreads[i], 1200, {maxDpr:1}); if (isLTR()){ const f = flipCv(cv); cv.width = 1; cv = f; } BK.cache.set(i, cv);
     if (BK.cache.size > 7){ const far = [...BK.cache.keys()].sort((a, b) => Math.abs(b - BK.pos) - Math.abs(a - BK.pos))[0]; if (!idx.includes(far)){ BK.cache.get(far).width = 1; BK.cache.delete(far); } } }
 }
 function bkFace(side, k){
@@ -5427,6 +5478,7 @@ function bkFace(side, k){
 /* ציור מצב הספר: p = כמה דפים כבר נהפכו, t = התקדמות ההיפוך של הדף הבא (0..1) */
 function bkDraw(ctx, W, H, p, t, wm){
   const n = BK.n, G = geo(), ar = G.pw / G.H;
+  const ltr = isLTR(); if (ltr){ ctx.save(); ctx.setTransform(-1, 0, 0, 1, W, 0); } // אלבום באנגלית: הכל במראה (העמודים עצמם כבר הפוכים, אז הם יוצאים ישרים)
   const bgG = ctx.createRadialGradient(W/2, H*.45, 10, W/2, H/2, Math.max(W, H)*.7); bgG.addColorStop(0, '#4A423B'); bgG.addColorStop(1, '#1B1714'); ctx.fillStyle = bgG; ctx.fillRect(0, 0, W, H);
   let ph = H * .78, pw = ph * ar; if (pw * 2 > W * .94){ pw = W * .47; ph = pw / ar; }
   const shift = p === 0 ? (1 - t) * pw/2 : p === n ? -t * pw/2 : p > n ? -pw/2 : 0, cx = W/2 + shift, y = (H - ph) / 2;
@@ -5453,6 +5505,7 @@ function bkDraw(ctx, W, H, p, t, wm){
       ctx.fillStyle = lg; ctx.fillRect(front ? cx - w : cx, y - ph*.05, w, ph*1.1);
     }
   }
+  if (ltr) ctx.restore();
   if (wm){ ctx.save(); ctx.translate(W/2, H/2); ctx.rotate(-24 * Math.PI / 180); ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.direction = 'rtl';
     ctx.font = `700 ${Math.round(ph * .12)}px Heebo, "Frank Ruhl Libre", sans-serif`; ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.strokeStyle = 'rgba(0,0,0,.14)'; ctx.lineWidth = Math.max(1, ph * .004);
     for (const dy of [-ph*.34, 0, ph*.34]) for (const dx of [-pw*.75, pw*.75]){ ctx.strokeText('חי אפליקציות', dx + dy*.4, dy); ctx.fillText('חי אפליקציות', dx + dy*.4, dy); }
@@ -5473,7 +5526,7 @@ function bkAnim(p, from, to, ms, draw){
     requestAnimationFrame(step); });
 }
 async function bkFlip(dir){
-  if (BK.busy || BK.rec) return false; const n = BK.n, np = BK.pos + dir; if (np < 0 || np > n + 1) return false;
+  if (BK.busy || BK.rec) return false; zoomReset(BK.el.querySelector('.bk-stage')); const n = BK.n, np = BK.pos + dir; if (np < 0 || np > n + 1) return false;
   BK.busy = true;
   try{ const p = dir > 0 ? BK.pos : np; await bkEnsure(p - 1, p);
     await bkAnim(p, dir > 0 ? 0 : 1, dir > 0 ? 1 : 0, 700, bkPaint); BK.pos = np; await bkEnsure(np - 1); bkPaint(); }
@@ -5495,8 +5548,10 @@ async function openBook(){
   el.querySelector('.bk-load').remove(); bkPaint();
   let sx = null;
   BK.cv.addEventListener('pointerdown', e => { sx = e.clientX; });
+  const bkSt = el.querySelector('.bk-stage'); pinchZoom(bkSt, () => BK.cv);
   BK.cv.addEventListener('pointerup', e => { if (sx == null) return; const dx = e.clientX - sx, r = BK.cv.getBoundingClientRect(); sx = null;
-    if (Math.abs(dx) > 30) bkFlip(dx > 0 ? 1 : -1); else bkFlip(e.clientX < r.left + r.width/2 ? 1 : -1); });
+    if (zoomBusy(bkSt) || !e.isPrimary) return; const L = isLTR() ? -1 : 1;
+    if (Math.abs(dx) > 30) bkFlip((dx > 0 ? 1 : -1) * L); else bkFlip((e.clientX < r.left + r.width/2 ? 1 : -1) * L); });
   el.addEventListener('click', async e => {
     const a = e.target.closest('[data-a]'); if (!a) return; const k = a.dataset.a;
     if (k === 'x'){ history.back(); return; }
@@ -5556,6 +5611,179 @@ async function bkRecord(){
   window.__lastVideo = file;
 }
 $('bookBtn').onclick = openBook;
+
+/* =========================================================
+   שלב 16 – זיהוי גוף (MoveNet): איפה הראש של כל אדם, גם כשהפנים לא נראות
+   (סלפי במראה עם טלפון מול הפנים, ראש מסובב, מרחוק, כובע). רץ בטלפון.
+   p.pose = [{s, box:[x0,y0,x1,y1], head:[x0,y0,x1,y1]}]  – הכל יחסי לתמונה (0..1)
+   ========================================================= */
+const POSE_VER = 1;
+const POSE_URL = () => window.POSE_URL || 'models/movenet-multipose.json';
+const POSE = {active:false, model:null, failed:false, done:0, total:0};
+async function poseInit(){
+  if (POSE.model || POSE.failed) return POSE.model;
+  try{
+    const fa = await faInit(); if (!fa) throw new Error('tf');
+    POSE.tf = fa.tf; POSE.model = await fa.tf.loadGraphModel(POSE_URL());
+  }catch(e){ POSE.failed = true; POSE.err = String((e && e.message) || e).slice(0, 160); console.warn('זיהוי גוף לא זמין', e); }
+  return POSE.model;
+}
+async function detectPose(bmp){
+  const tf = POSE.tf, L = 320, sc = L / Math.max(bmp.width, bmp.height);
+  const dw = Math.max(1, Math.round(bmp.width * sc)), dh = Math.max(1, Math.round(bmp.height * sc));
+  const pw = Math.ceil(dw / 32) * 32, ph = Math.ceil(dh / 32) * 32;
+  const c = document.createElement('canvas'); c.width = pw; c.height = ph; const x = c.getContext('2d');
+  x.fillStyle = '#000'; x.fillRect(0, 0, pw, ph); x.drawImage(bmp, 0, 0, dw, dh);
+  const inp = tf.tidy(() => tf.browser.fromPixels(c).toInt().expandDims(0));
+  let out; try{ out = POSE.model.execute(inp); }catch(_){ out = await POSE.model.executeAsync(inp); }
+  const d = await out.data(); tf.dispose([inp, out]); c.width = c.height = 1;
+  const fx = pw / dw, fy = ph / dh, res = [];
+  for (let i = 0; i < 6; i++){
+    const o = i * 56, s = d[o + 55]; if (s < .25) continue;
+    const kp = j => ({x:d[o + j*3 + 1] * fx, y:d[o + j*3] * fy, s:d[o + j*3 + 2]});
+    const box = [d[o + 52] * fx, d[o + 51] * fy, d[o + 54] * fx, d[o + 53] * fy].map(v => clamp(v, 0, 1));
+    if (box[3] - box[1] < .08) continue;
+    const H = [0, 1, 2, 3, 4].map(kp).filter(k => k.s > .22), sh = [5, 6].map(kp).filter(k => k.s > .22);
+    const shW = sh.length === 2 ? Math.abs(sh[0].x - sh[1].x) * bmp.width / bmp.height : 0; // רוחב כתפיים ביחידות גובה
+    let cx, cy, r; // מרכז הראש ורדיוס, ביחידות גובה התמונה
+    const asp = bmp.width / bmp.height;
+    if (H.length >= 2){
+      cx = H.reduce((a, k) => a + k.x, 0) / H.length; cy = H.reduce((a, k) => a + k.y, 0) / H.length;
+      const span = (Math.max(...H.map(k => k.x)) - Math.min(...H.map(k => k.x))) * asp;
+      r = Math.max(span * .75, shW * .38, (box[3] - box[1]) * .06);
+    } else if (sh.length === 2){
+      cx = (sh[0].x + sh[1].x) / 2; r = Math.max(shW * .4, (box[3] - box[1]) * .06); cy = (sh[0].y + sh[1].y) / 2 - r * 1.7;
+    } else { cx = (box[0] + box[2]) / 2; r = (box[2] - box[0]) * asp * .22; cy = box[1] + r * 1.1; }
+    const rx = r / asp; // הרדיוס ביחידות רוחב
+    const head = [cx - rx * 1.25, cy - r * 1.7, cx + rx * 1.25, cy + r * 1.25].map(v => clamp(v, 0, 1)); // כולל שיער, כובע, סנטר
+    res.push({s:+s.toFixed(2), box:box.map(v => +v.toFixed(3)), head:head.map(v => +v.toFixed(3))});
+  }
+  return res;
+}
+async function startPose(){
+  if (POSE.active || !S.project || AN.active) return;
+  const todo = S.photos.filter(p => (p.posev || 0) < POSE_VER && p.an);
+  if (!todo.length) return;
+  const model = await poseInit(); if (!model) return;
+  POSE.active = true; POSE.total = todo.length; POSE.done = 0; posePg();
+  await wakeOn();
+  for (const m of todo){
+    if (!S.project || !S.photos.includes(m)) continue;
+    try{
+      const pb = await DB.get('previews', m.id);
+      if (pb){ const bmp = await createImageBitmap(pb); m.pose = await detectPose(bmp); bmp.close(); }
+    }catch(e){ console.warn('זיהוי גוף נכשל', m.name, e); }
+    m.posev = POSE_VER; DB.put('photos', m).catch(() => {});
+    POSE.done++; posePg();
+    await new Promise(r => setTimeout(r, 0));
+  }
+  POSE.active = false; wakeOff(); posePg();
+  if (PV.active && PV.plan){ showSpread(PV.cur); paintStrip(); }
+}
+function posePg(){
+  const el = document.querySelector('#pplWait b'); if (el) el.textContent = `${POSE.done} / ${POSE.total}`;
+  if (current === 'gallery' && !AN.active && !Q.active){
+    if (POSE.active){ $('progress').classList.remove('hidden'); $('pgTxt').textContent = `מזהה איפה הראשים ${POSE.done} מתוך ${POSE.total}`;
+      $('pgBar').style.width = (POSE.total ? POSE.done / POSE.total * 100 : 0) + '%'; $('pgSub').textContent = 'כדי שאף ראש לא ייחתך באלבום'; $('pgStop').classList.add('hidden'); }
+    else if (!PPL.active) $('progress').classList.add('hidden');
+  }
+}
+/* כל הראשים בתמונה: מהפנים ומהגוף. פנים "חשודות" שנמצאות באמצע גוף של אדם (יד, צל) – נזרקות */
+function headBoxes(m){
+  const poses = (m.pose || []).filter(p => p.s >= .3);
+  const faces = (m.faces || []).filter(f => f.w >= .015 && (f.s || 1) >= .5).filter(f => {
+    if (f.v === 1 || (f.s || 1) >= .9) return true;
+    return !poses.some(p => f.x > p.box[0] && f.x < p.box[2] && f.y > p.box[1] + (p.box[3] - p.box[1]) * .35 && f.y < p.box[3] && !(f.y >= p.head[1] && f.y <= p.head[3]));
+  }).map(f => [f.x - f.w*.7, f.y - f.h*1.0, f.x + f.w*.7, f.y + f.h*.8].map(v => clamp(v, 0, 1)));
+  return faces.concat(poses.map(p => p.head));
+}
+
+/* =========================================================
+   שלב 17 – כיוון האלבום (עברית/אנגלית) וזום בצביטה בכל מסך
+   ========================================================= */
+const isLTR = () => !!(S.project && S.project.dir === 'ltr');
+/* היפוך עימוד אוטומטי לאלבום באנגלית: מה שהיה בעמוד הימני עובר לשמאלי. התמונות עצמן לא מתהפכות */
+function mirrorItems(items, W){
+  items.forEach(it => {
+    it.x = W - it.x - it.w;
+    if (it.rot) it.rot = -it.rot;
+    if (it.fade && it.fade.edge) it.fade = Object.assign({}, it.fade, {edge:it.fade.edge === 'left' ? 'right' : it.fade.edge === 'right' ? 'left' : it.fade.edge});
+  });
+}
+function mirrorBg(bg){
+  if (!bg) return bg;
+  if (bg.type === 'img' && bg.fx != null) bg.fx = 1 - bg.fx;
+  return bg;
+}
+async function setAlbumDir(dir){
+  if ((S.project.dir || 'rtl') === dir) return;
+  const G = geo();
+  S.project.dir = dir;
+  S.project.cover = Object.assign(coverCfg(), {dir}); // הכריכה באותו כיוון
+  if (PV.plan){ PV.plan.spreads.forEach(sp => { if (sp.custom){ mirrorItems(sp.custom.items, sp.custom.W || G.W); mirrorBg(sp.custom.bg); } });
+    if (PV.plan.cover) delete PV.plan.cover.custom; savePlan(); }
+  touchProject(); updDirRow();
+  if (PV.active && PV.plan){ buildStrip(); await showSpread(PV.cur); }
+  toast(dir === 'ltr' ? 'האלבום עבר לעימוד באנגלית – נפתח משמאל' : 'האלבום עבר לעימוד בעברית – נפתח מימין', 3500);
+}
+function updDirRow(){
+  const l = isLTR();
+  document.querySelectorAll('#dirSeg [data-dir]').forEach(b => b.classList.toggle('on', (b.dataset.dir === 'ltr') === l));
+}
+
+/* ---------- זום בצביטה: מסך האלבום, מסך מלא, תמונה מוגדלת, תצוגת ספר ---------- */
+function pinchZoom(box, getTarget){
+  const Z = {s:1, tx:0, ty:0, gest:false};
+  box._zoom = Z;
+  const tgt = () => getTarget();
+  const apply = () => { const t = tgt(); if (!t) return; t.style.transformOrigin = '0 0'; t.style.transform = Z.s > 1.001 ? `translate(${Z.tx}px,${Z.ty}px) scale(${Z.s})` : '';
+    t.style.willChange = Z.s > 1.001 ? 'transform' : ''; box.classList.toggle('zoomed', Z.s > 1.001); };
+  const clampT = () => { const t = tgt(); if (!t) return; const w = t.offsetWidth, h = t.offsetHeight;
+    Z.tx = clamp(Z.tx, w - w * Z.s, 0); Z.ty = clamp(Z.ty, h - h * Z.s, 0); };
+  Z.reset = () => { Z.s = 1; Z.tx = Z.ty = 0; apply(); };
+  let p0 = null, lastTap = 0;
+  const local = (cx, cy) => { const t = tgt(), r = t.getBoundingClientRect(); return {x:(cx - r.left), y:(cy - r.top)}; }; // נקודה במסך יחסית לאלמנט המוגדל
+  const dist = e => Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  const mid = e => ({x:(e.touches[0].clientX + e.touches[1].clientX) / 2, y:(e.touches[0].clientY + e.touches[1].clientY) / 2});
+  box.addEventListener('touchstart', e => {
+    if (!tgt()) return;
+    if (e.touches.length === 2){ Z.gest = true; const m = mid(e), l = local(m.x, m.y);
+      p0 = {type:'pinch', d:dist(e), s:Z.s, lx:l.x / Z.s, ly:l.y / Z.s, ox:Z.tx - l.x, oy:Z.ty - l.y, m}; e.stopPropagation(); e.preventDefault(); return; }
+    if (e.touches.length === 1){
+      const now = Date.now();
+      if (now - lastTap < 280 && Z.s > 1.001){ Z.reset(); Z.gest = true; e.stopPropagation(); lastTap = 0; return; }
+      lastTap = now;
+      if (Z.s > 1.001){ Z.gest = true; p0 = {type:'pan', x:e.touches[0].clientX, y:e.touches[0].clientY, tx:Z.tx, ty:Z.ty}; e.stopPropagation(); }
+      else Z.gest = false;
+    }
+  }, {capture:true, passive:false});
+  box.addEventListener('touchmove', e => {
+    if (!p0) return;
+    if (p0.type === 'pinch' && e.touches.length === 2){
+      const m = mid(e), s = clamp(p0.s * dist(e) / p0.d, 1, 6);
+      // הנקודה שבין האצבעות נשארת מתחת לאצבעות
+      Z.tx = (Z.tx + 0); const t = tgt(), r0x = t.getBoundingClientRect().left - Z.tx, r0y = t.getBoundingClientRect().top - Z.ty;
+      Z.s = s; Z.tx = m.x - r0x - p0.lx * s; Z.ty = m.y - r0y - p0.ly * s;
+      clampT(); apply(); e.preventDefault(); e.stopPropagation(); return;
+    }
+    if (p0.type === 'pan' && e.touches.length === 1){
+      Z.tx = p0.tx + e.touches[0].clientX - p0.x; Z.ty = p0.ty + e.touches[0].clientY - p0.y; clampT(); apply(); e.preventDefault(); e.stopPropagation();
+    }
+  }, {capture:true, passive:false});
+  const end = e => {
+    if (e.touches.length === 0){ p0 = null; if (Z.s < 1.05) Z.reset(); }
+    else if (e.touches.length === 1 && p0 && p0.type === 'pinch' && Z.s > 1.001) p0 = {type:'pan', x:e.touches[0].clientX, y:e.touches[0].clientY, tx:Z.tx, ty:Z.ty};
+    if (Z.gest){ e.stopPropagation(); if (e.touches.length === 0) setTimeout(() => { Z.gest = false; }, 60); }
+  };
+  box.addEventListener('touchend', end, {capture:true, passive:true});
+  box.addEventListener('touchcancel', end, {capture:true, passive:true});
+  return Z;
+}
+const zoomBusy = box => !!(box && box._zoom && (box._zoom.s > 1.001 || box._zoom.gest));
+const zoomReset = box => { if (box && box._zoom) box._zoom.reset(); };
+
+$('dirSeg').onclick = e => { const b = e.target.closest('[data-dir]'); if (b) setAlbumDir(b.dataset.dir); };
+pinchZoom($('paper'), () => $('pgCanvas'));
 
 /* =========================================================
    הפעלה
