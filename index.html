@@ -3391,7 +3391,7 @@ function edAction(a, btn){
         <div class="ed-row"><span>סוג צל</span><div class="ed-chips">${[['soft', 'רך'], ['hard', 'חד'], ['long', 'ארוך'], ['float', 'מרחף']].map(([v, n]) => `<button data-ss="${v}" class="${(it.shStyle || 'soft') === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         <div class="ed-row"><span>זוהר</span><div class="ed-chips"><button data-gl="none">בלי</button><button data-gl="gold">זהב</button><button data-gl="white">לבן</button></div></div>
         <div class="ed-row"><span>מסגרת פולארויד</span><button class="switch ${it.borderB ? 'on' : ''}" data-pol="1"></button></div>
-        <div class="ed-row"><span>עיטור זהב<br><small style="opacity:.7">חד בדפוס</small></span><div class="ed-chips">${[['', 'בלי'], ['v:fr-ornate', 'מעוטרת'], ['v:fr-classic', 'קלאסית'], ['v:fr-leaf', 'עלים'], ['v:fr-deco', 'דקו'], ['v:cr-scroll', 'פינות']].map(([v, n]) => `<button data-vf="${v}" class="${(edItems().find(o => o.t === 'el' && o.of === it.id && String(o.el).startsWith('v:')) || {el:''}).el === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>`, P => {
+        <div class="ed-row"><span>עיטור זהב<br><small style="opacity:.7">חד בדפוס</small></span><div class="ed-chips">${[['', 'בלי'], ['v:rf-baroque', 'בארוק'], ['v:rf-deco', 'ארט דקו'], ['v:fr-ornate', 'מעוטרת'], ['v:fr-classic', 'קלאסית'], ['v:fr-leaf', 'עלים'], ['v:fr-deco', 'קווי דקו'], ['v:cr-scroll', 'פינות']].map(([v, n]) => `<button data-vf="${v}" class="${(edItems().find(o => o.t === 'el' && o.of === it.id && String(o.el).startsWith('v:')) || {el:''}).el === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>`, P => {
         slider(P, '#rB', () => it.border || 0, v => { it.border = v; if (it.borderB) it.borderB = v * 2.6; });
         slider(P, '#rS', () => it.shadow || 0, v => { it.shadow = v; it.glow = null; });
         bindSwatches(P, 'swB', c => { it.borderColor = c; if (!it.border) it.border = 1.2; });
@@ -4530,14 +4530,14 @@ function elInfo(id){
 }
 /* טעינת תמונת אלמנט (פעם אחת, נשמרת בזיכרון – הקבצים קטנים) */
 function getEl(id){
-  if (String(id).startsWith('v:')){ const v = {vec:true}; ELS.bmp.set(id, v); return Promise.resolve(v); }
+  if (String(id).startsWith('v:') && !(VORN[id] && VORN[id].src)){ const v = {vec:true}; ELS.bmp.set(id, v); return Promise.resolve(v); }
   if (ELS.bmp.has(id)) return Promise.resolve(ELS.bmp.get(id));
   if (ELS.pend.has(id)) return ELS.pend.get(id);
   const p = (async () => {
     try{
       let blob;
       if (id.startsWith('u:')) blob = await DB.get('meta', 'el:' + id);
-      else { const r = await fetch(EL_BASE() + id.slice(2)); if (!r.ok) throw 0; blob = await r.blob(); }
+      else { const r = await fetch(EL_BASE() + (VORN[id] && VORN[id].src || id.slice(2))); if (!r.ok) throw 0; blob = await r.blob(); }
       const b = await createImageBitmap(blob); ELS.bmp.set(id, b); return b;
     }catch(_){ return null; }
     finally{ ELS.pend.delete(id); }
@@ -4547,7 +4547,7 @@ function getEl(id){
 function drawElItem(ctx, it, k, ox, img){
   if (String(it.el).startsWith('v:')){ const x = mx(it.x, k, ox), y = mx(it.y, k, ox), w = it.w * k, h = it.h * k;
     ctx.save(); ctx.globalAlpha = it.op == null ? 1 : it.op; if (it.flip){ ctx.translate(2*x + w, 0); ctx.scale(-1, 1); }
-    drawVorn(ctx, it, x, y, w, h); ctx.restore(); return; }
+    drawVorn(ctx, it, x, y, w, h, img); ctx.restore(); return; }
   if (!img) return;
   ctx.save();
   ctx.globalAlpha = it.op == null ? 1 : it.op;
@@ -4563,7 +4563,7 @@ function elDpi(it){ const e = elInfo(it.el); return e ? Math.round(e.w / (it.w /
 
 /* ---------- מגירת האלמנטים ---------- */
 async function openElDrawer(){
-  await elsLoad();
+  await elsLoad(); await Promise.all(Object.keys(VORN).filter(k => VORN[k].src).map(getEl));
   const ev = S.project.event || 'general', evc = EV_CATS[ev] || EV_CATS.general;
   let cat = 'event';
   const s = document.createElement('div'); s.className = 'scrim el-scrim';
@@ -5970,6 +5970,8 @@ $('colBtn').onclick = openCollages;
 
 /* ---------- עיטורים וקטוריים: מצוירים בקוד ברזולוציית היעד, ולכן חדים לגמרי בדפוס בכל גודל ---------- */
 const VORN = {
+  'v:rf-baroque':{n:'מסגרת בארוק', kind:'rframe', ar:.8, src:'rf-baroque.webp', C:1000, inn:141, ratio:.34},
+  'v:rf-deco':   {n:'מסגרת ארט דקו', kind:'rframe', ar:.8, src:'rf-deco.webp', C:1000, inn:54, ratio:.36},
   'v:fr-ornate': {n:'מסגרת מעוטרת', kind:'frame', ar:.8},
   'v:fr-classic':{n:'מסגרת קלאסית', kind:'frame', ar:.8},
   'v:fr-leaf':   {n:'מסגרת עלים', kind:'frame', ar:.8},
@@ -6002,8 +6004,20 @@ function vSparkle(ctx, cx, cy, r){
   ctx.moveTo(cx, cy - r); ctx.quadraticCurveTo(cx + r*.12, cy - r*.12, cx + r, cy); ctx.quadraticCurveTo(cx + r*.12, cy + r*.12, cx, cy + r);
   ctx.quadraticCurveTo(cx - r*.12, cy + r*.12, cx - r, cy); ctx.quadraticCurveTo(cx - r*.12, cy - r*.12, cx, cy - r); ctx.closePath();
 }
-function drawVorn(ctx, it, x, y, w, h){
+function drawVorn(ctx, it, x, y, w, h, img){
   const v = VORN[it.el]; if (!v) return;
+  if (v.kind === 'rframe'){ // מסגרת מתמונה: 4 פינות משוקפות + צלעות שנמתחות מפס של פיקסל אחד – הפינות אף פעם לא מתעוותות
+    if (!img || !img.width) return;
+    const C = img.width, cs = Math.min(v.ratio * Math.min(w, h), w/2, h/2), e = C - 3, L = w - 2*cs, H2 = h - 2*cs;
+    ctx.save(); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    const part = (sx, sy, fn) => { ctx.save(); ctx.translate(sx, sy); fn(); ctx.restore(); };
+    const quad = (fx, fy) => part(fx ? x + w : x, fy ? y + h : y, () => { ctx.scale(fx ? -1 : 1, fy ? -1 : 1);
+      ctx.drawImage(img, 0, 0, C, C, 0, 0, cs, cs);
+      if (L > .5) ctx.drawImage(img, e, 0, 1, C, cs - .5, 0, L / 2 + 1, cs);   // חצי צלע עליונה/תחתונה
+      if (H2 > .5) ctx.drawImage(img, 0, e, C, 1, 0, cs - .5, cs, H2 / 2 + 1); }); // חצי צלע צדדית
+    quad(0, 0); quad(1, 0); quad(0, 1); quad(1, 1);
+    ctx.restore(); return;
+  }
   const s = Math.min(w, h), paint = vGold(ctx, x, y, w, h, it.col);
   ctx.save(); ctx.strokeStyle = paint; ctx.fillStyle = paint; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
   if (it.shadow){ ctx.shadowColor = 'rgba(0,0,0,.3)'; ctx.shadowBlur = s * .012; ctx.shadowOffsetY = s * .004; }
@@ -6062,8 +6076,9 @@ function drawVorn(ctx, it, x, y, w, h){
 }
 // מסגרת סביב תמונה: עוטפת את התמונה עם מרווח, כך שהתמונה יושבת בתוך הקו הפנימי
 const VFR_PAD = {'v:fr-classic':.065, 'v:fr-ornate':.095, 'v:fr-leaf':.05, 'v:fr-deco':.075};
+const vPad = id => { const v = VORN[id]; return v && v.kind === 'rframe' ? v.ratio * v.inn / v.C + .008 : (VFR_PAD[id] || .07); };
 function vFrameBox(p, id){ // הצלע הקצרה של המסגרת = צלע התמונה + 2 מרווחים; המרווח הוא חלק קבוע מהמסגרת
-  const c = VFR_PAD[id] || .07, P2 = c * Math.min(p.w, p.h) / (1 - 2*c);
+  const c = vPad(id), P2 = c * Math.min(p.w, p.h) / (1 - 2*c);
   return {x:p.x - P2, y:p.y - P2, w:p.w + 2*P2, h:p.h + 2*P2};
 }
 function vCornerBoxes(p){ const cs = Math.min(p.w, p.h) * .26, o = cs * .5;
@@ -6073,7 +6088,7 @@ function vFitPhoto(p, id, G){
   if (!G || G.cover || id === 'v:cr-scroll') return true;
   const mg = Math.max(3, G.m * .55), fold = 7, right = p.x + p.w/2 > G.W/2;
   const R = {x:right ? G.W/2 + fold : mg, y:mg, w:G.W/2 - mg - fold, h:G.H - 2*mg};
-  const c = VFR_PAD[id] || .07, grow = 2 * c / (1 - 2*c), mn = Math.min(p.w, p.h);
+  const c = vPad(id), grow = 2 * c / (1 - 2*c), mn = Math.min(p.w, p.h);
   const f = Math.min(1, R.w / (p.w + grow * mn), R.h / (p.h + grow * mn));
   if (f < .5) return false;
   const cx = p.x + p.w/2, cy = p.y + p.h/2; p.w *= f; p.h *= f; p.x = cx - p.w/2; p.y = cy - p.h/2;
@@ -6092,10 +6107,11 @@ function vWrapPhoto(items, p, id, extra = {}){
 let VORN_TH = null;
 function vornThumbs(){
   if (VORN_TH) return VORN_TH;
-  VORN_TH = Object.keys(VORN).map(id => { const v = VORN[id], c = document.createElement('canvas'), W = 240, H = Math.round(Math.min(240, 240 / v.ar));
+  const miss = Object.keys(VORN).some(id => VORN[id].src && !ELS.bmp.get(id));
+  const out = Object.keys(VORN).map(id => { const v = VORN[id], c = document.createElement('canvas'), W = 240, H = Math.round(Math.min(240, 240 / v.ar));
     c.width = W; c.height = Math.max(40, H); const ctx = c.getContext('2d'); const w = v.ar >= 1 ? W - 16 : (c.height - 16) * v.ar, h = v.ar >= 1 ? w / v.ar : c.height - 16;
-    drawVorn(ctx, {el:id}, (W - w)/2, (c.height - h)/2, w, h); return {id, f:id, c:'vec', vec:true, w:4000, h:Math.round(4000 / v.ar), url:c.toDataURL()}; });
-  return VORN_TH;
+    drawVorn(ctx, {el:id}, (W - w)/2, (c.height - h)/2, w, h, ELS.bmp.get(id)); return {id, f:id, c:'vec', vec:true, w:4000, h:Math.round(4000 / v.ar), url:c.toDataURL()}; });
+  if (!miss) VORN_TH = out; return out;
 }
 
 /* ---------- עיטור אוטומטי מקצועי ----------
@@ -6105,9 +6121,22 @@ function vornThumbs(){
 function hashStr(s){ let h = 2166136261; for (const ch of String(s)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; }
 function autoFrameStyles(){
   const pj = S.project, T = STYLE_OVR || pj.styleId;
-  if (T === 'modern') return ['v:fr-deco', 'v:fr-classic'];
+  if (T === 'modern') return ['v:rf-deco', 'v:fr-deco'];
   if (pj.event === 'family' || pj.event === 'general' || pj.event === 'newborn') return ['v:fr-leaf', 'v:fr-classic'];
-  return ['v:fr-ornate', 'v:fr-classic'];
+  return ['v:rf-baroque', 'v:fr-ornate', 'v:rf-baroque', 'v:fr-classic'];
+}
+// האם יש ראש באזור הפינות שמסגרת בארוק מכסה
+function rfHeadClash(p, id){
+  const v = VORN[id]; if (!v || v.kind !== 'rframe') return false;
+  const m = META.get(p.id); if (!m || typeof headBoxes !== 'function') return false;
+  const heads = headBoxes(m); if (!heads.length) return m.cat === 'group';
+  const b = p.border || 0, iw = p.w - 2*b, ih = p.h - 2*b - (p.borderB || 0);
+  const cr = coverRect(m.width, m.height, iw / ih, p.fx, p.fy, p.zoom);
+  const X = u => p.x + b + ((u * m.width - cr.sx) / cr.sw) * iw, Y = u => p.y + b + ((u * m.height - cr.sy) / cr.sh) * ih;
+  const z = v.ratio * Math.min(p.w, p.h) * .85;
+  const zones = [[p.x, p.y], [p.x + p.w - z, p.y], [p.x, p.y + p.h - z], [p.x + p.w - z, p.y + p.h - z]];
+  return heads.some(h => { const hx0 = X(h[0]), hy0 = Y(h[1]), hx1 = X(h[2]), hy1 = Y(h[3]);
+    return zones.some(([zx, zy]) => !(hx1 < zx || hx0 > zx + z || hy1 < zy || hy0 > zy + z)); });
 }
 let AE_PROBE = false;
 function autoEls(L, sp, idx){
@@ -6132,7 +6161,7 @@ function autoEls(L, sp, idx){
   const okPhoto = (it, maxRot = 6) => it.t === 'photo' && (!it.shape || it.shape === 'rect' || it.shape === 'rounded') && Math.abs(it.rot || 0) <= maxRot && !it.soft && !it.pin && !it.film;
   const pages = G.cover ? [] : [{x:0, y:0, w:G.W/2, h:G.H}, {x:G.W/2, y:0, w:G.W/2, h:G.H}];
   const blocks = (b, own) => L.items.some(o => o !== own && !(o.t === 'rect' && (o.w * o.h < 40 || inside(b, o, 1))) && hit(b, o, 1));
-  const styles = autoFrameStyles(), block = Math.floor((idx - 1) / 3), fr = styles[(block + seed) % styles.length];
+  const styles = autoFrameStyles(), block = Math.floor((idx - 1) / 3), fr0 = styles[(block + seed) % styles.length];
   // 1. תמונה בודדת בעמוד – מקבלת מסגרת מעוטרת. אם צריך, התמונה מוקטנת מעט (באותו יחס, בלי לשנות חיתוך) כדי לפנות מקום
   const mg = Math.max(edge, G.m * .55);
   for (const pg of pages){
@@ -6140,8 +6169,9 @@ function autoEls(L, sp, idx){
     if (inPg.length !== 1 || !okPhoto(inPg[0])) continue;
     const p = inPg[0];
     if (p.x < 1 || p.y < 1 || p.x + p.w > G.W - 1 || p.y + p.h > G.H - 1) continue; // תמונה בגלישה – העיצוב בנוי עליה, לא נוגעים
+    const fr = rfHeadClash(p, fr0) ? 'v:fr-classic' : fr0; // ראש ליד פינה – מסגרת דקה במקום סלסולים כבדים
     const R = {x:pg.x + (pg.x ? fold + 2 : mg), y:mg, w:pg.w - mg - fold - 2, h:G.H - 2*mg};
-    const c = VFR_PAD[fr] || .07, grow = 2 * c / (1 - 2*c), mn = Math.min(p.w, p.h);
+    const c = vPad(fr), grow = 2 * c / (1 - 2*c), mn = Math.min(p.w, p.h);
     const f = Math.min(1, R.w / (p.w + grow * mn), R.h / (p.h + grow * mn));
     if (f < .72) continue;
     const q = Object.assign({}, p); const cx = p.x + p.w/2, cy = p.y + p.h/2; q.w = p.w * f; q.h = p.h * f; q.x = cx - q.w/2; q.y = cy - q.h/2;
