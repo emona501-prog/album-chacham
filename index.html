@@ -226,6 +226,12 @@ h1{font-family:"Frank Ruhl Libre",serif;font-size:30px;line-height:1.2;margin:18
 .modal .acts.col{flex-direction:column}
 .modal .stat{padding:10px 0;font-size:14.5px}
 .fs{position:fixed;inset:0;z-index:75;background:#151210;animation:fade .18s}
+.nd-pad{display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px);gap:6px;direction:ltr}
+.nd-pad button,.nd-side button{border:0;border-radius:12px;background:rgba(255,255,255,.12);color:#fff;font-size:18px;touch-action:none;user-select:none;-webkit-user-select:none}
+.nd-pad button:active,.nd-side button:active{background:#A8552E}
+.nd-pad b{display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:15px}.nd-pad b small{font-size:10px;opacity:.7;font-weight:400}
+.nd-side{display:flex;flex-direction:column;gap:6px;margin-inline-start:14px}.nd-side button{height:46px;padding:0 14px;font-size:14px}
+.nd-info{text-align:center;font-size:12px;opacity:.75;direction:ltr;padding:4px 0 2px}
 .fs .fs-wrap{position:absolute;left:50%;top:calc(50% - 34px);transform:translate(-50%,-50%);box-shadow:0 10px 40px rgba(0,0,0,.6);overflow:hidden;touch-action:none}
 .fs canvas{display:block}
 .fs-bar{position:absolute;inset-inline:0;bottom:0;display:flex;align-items:center;gap:10px;padding:12px 16px calc(12px + var(--safe-b));color:#fff}
@@ -255,6 +261,8 @@ h1{font-family:"Frank Ruhl Libre",serif;font-size:30px;line-height:1.2;margin:18
 .ed-rg{flex:1;max-width:62%;accent-color:#E08A5C}
 .ed-chips{display:flex;gap:6px;flex-wrap:wrap}
 .ed-chips button,.ed-chip{padding:7px 12px;border-radius:10px;background:rgba(255,255,255,.1);color:#fff;font-size:13px}
+.ed-chips button.on{background:#A8552E;color:#fff;font-weight:700}
+.mus-opts{display:flex;flex-wrap:wrap;gap:8px}
 .ed-sw{display:flex;gap:8px;flex-wrap:wrap;padding:6px 0}
 .ed-sw button,.ed-sw-custom{width:32px;height:32px;border-radius:50%;border:2px solid rgba(255,255,255,.35)}
 .ed-sw-custom{display:grid;place-items:center;background:conic-gradient(red,yellow,lime,cyan,blue,magenta,red);font-weight:700;color:#fff;position:relative;overflow:hidden}
@@ -3094,6 +3102,20 @@ function edRender(){
   }
   if (!G.cover && V.vx <= G.pw && V.vx + V.vw >= G.pw){ c.strokeStyle = 'rgba(0,0,0,.35)'; c.beginPath(); c.moveTo(X(G.pw), 0); c.lineTo(X(G.pw), ch); c.stroke(); }
   c.restore();
+  { const it0 = edSel(), dg = ED.drag;
+    if (it0 && dg && dg.pushed && dg.type !== 'pan'){ // קווי עזר דהויים בזמן תנועה; כשמתיישר – הקו נצבע במלואו
+      c.save(); c.strokeStyle = 'rgba(230,0,126,.22)'; c.lineWidth = dpr; c.setLineDash([5*dpr, 5*dpr]);
+      if (!it0.rot){ for (const x of [it0.x, it0.x + it0.w/2, it0.x + it0.w]){ c.beginPath(); c.moveTo(X(x), 0); c.lineTo(X(x), ch); c.stroke(); }
+        for (const y of [it0.y, it0.y + it0.h/2, it0.y + it0.h]){ c.beginPath(); c.moveTo(0, Y(y)); c.lineTo(cw, Y(y)); c.stroke(); } }
+      if (dg.type === 'rotate' || it0.rot){ const cx = X(it0.x + it0.w/2), cy = Y(it0.y + it0.h/2), R = Math.max(it0.w, it0.h) * k * .75, a = (it0.rot || 0) * Math.PI / 180, ok = ED.rotSnap && dg.type === 'rotate';
+        c.setLineDash([]); c.strokeStyle = ok ? '#E6007E' : 'rgba(230,0,126,.3)'; c.lineWidth = (ok ? 1.6 : 1) * dpr;
+        c.beginPath(); c.moveTo(cx - R, cy); c.lineTo(cx + R, cy); c.moveTo(cx, cy - R); c.lineTo(cx, cy + R); c.stroke();
+        c.strokeStyle = 'rgba(168,85,46,.8)'; c.beginPath(); c.moveTo(cx - Math.cos(a)*R, cy - Math.sin(a)*R); c.lineTo(cx + Math.cos(a)*R, cy + Math.sin(a)*R); c.stroke(); }
+      const lab = dg.type === 'rotate' ? `${(Math.round((it0.rot || 0) * 10) / 10)}°` : dg.type === 'resize' ? `${Math.round(it0.w)}×${Math.round(it0.h)} מ"מ` : '';
+      if (lab){ c.setLineDash([]); c.font = `bold ${12*dpr}px Heebo, sans-serif`; const tw = c.measureText(lab).width + 14*dpr, lx = Math.min(cw - tw - 4*dpr, Math.max(4*dpr, X(it0.x + it0.w/2) - tw/2)), ly = Math.max(4*dpr, Y(it0.y) - 52*dpr);
+        c.fillStyle = (dg.type === 'rotate' && ED.rotSnap) ? '#E6007E' : 'rgba(20,16,14,.78)'; c.beginPath(); c.roundRect ? c.roundRect(lx, ly, tw, 22*dpr, 11*dpr) : c.rect(lx, ly, tw, 22*dpr); c.fill();
+        c.fillStyle = '#fff'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(lab, lx + tw/2, ly + 11*dpr); }
+      c.restore(); } }
   if (ED.guides.length){
     c.save(); c.strokeStyle = '#E6007E'; c.lineWidth = 1.2*dpr;
     ED.guides.forEach(g => { c.beginPath(); if (g.x !== undefined){ c.moveTo(X(g.x), 0); c.lineTo(X(g.x), ch); } else { c.moveTo(0, Y(g.y)); c.lineTo(cw, Y(g.y)); } c.stroke(); });
@@ -3119,9 +3141,13 @@ function edRender(){
   if (it){
     c.save();
     c.translate(X(it.x + it.w/2), Y(it.y + it.h/2)); c.rotate((it.rot || 0) * Math.PI / 180);
-    const w = it.w * k, h = it.h * k;
+    const w = it.w * k, h = it.h * k, pd = ED.crop ? 0 : edPad(it) * k;
     c.strokeStyle = ED.crop ? '#2E7DD7' : '#A8552E'; c.lineWidth = 2*dpr; c.setLineDash(ED.crop ? [6*dpr, 4*dpr] : []);
     c.strokeRect(-w/2, -h/2, w, h); c.setLineDash([]);
+    if (pd){ c.save(); c.setLineDash([3*dpr, 3*dpr]); c.lineWidth = dpr; c.strokeRect(-w/2 - pd, -h/2 - pd, w + 2*pd, h + 2*pd); c.restore(); }
+    // פריטים נעולים יחד – מסומנים במסגרת מקווקוות
+    edLinked(it).forEach(o => { c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.translate(X(o.x + o.w/2), Y(o.y + o.h/2)); c.rotate((o.rot || 0) * Math.PI / 180);
+      c.strokeStyle = 'rgba(168,85,46,.7)'; c.setLineDash([5*dpr, 4*dpr]); c.lineWidth = 1.2*dpr; c.strokeRect(-o.w*k/2, -o.h*k/2, o.w*k, o.h*k); c.restore(); });
     if (!ED.crop){
       const r = 6*dpr;
       edHandles(it).forEach(hd => {
@@ -3135,19 +3161,21 @@ function edRender(){
         c.beginPath(); c.arc(hd.lx * k, hd.ly * k, hd.rot ? r*1.15 : r, 0, Math.PI*2);
         c.fillStyle = hd.rot ? '#A8552E' : '#fff'; c.fill(); c.lineWidth = 1.5*dpr; c.strokeStyle = '#A8552E'; c.stroke();
       });
-      c.beginPath(); c.moveTo(0, -h/2); c.lineTo(0, -h/2 - 22*dpr); c.strokeStyle = '#A8552E'; c.lineWidth = 1.5*dpr; c.stroke();
+      if (!pd){ c.beginPath(); c.moveTo(0, -h/2); c.lineTo(0, -h/2 - 22*dpr); c.strokeStyle = '#A8552E'; c.lineWidth = 1.5*dpr; c.stroke(); }
     }
     c.restore();
   }
 }
 /* ידיות: 4 פינות (שינוי גודל יחסי), 4 צדדים (שינוי חופשי), וסיבוב */
+// פריט קטן על המסך: הידיות יוצאות החוצה עם ריווח, בלי ידיות צד – כך קל לתפוס גם אלמנט זעיר
+function edPad(it){ const kc = ED.kc || 1, m = Math.min(it.w, it.h) * kc; return m < 48 ? (48 - m) / 2 / kc : 0; }
 function edHandles(it){
-  const hw = it.w/2, hh = it.h/2, out = [];
-  for (const sx of [-1, 0, 1]) for (const sy of [-1, 0, 1]) if (sx || sy) out.push({sx, sy, lx:sx*hw, ly:sy*hh});
+  const pad = edPad(it), hw = it.w/2 + pad, hh = it.h/2 + pad, out = [], small = pad > 0;
+  for (const sx of [-1, 0, 1]) for (const sy of [-1, 0, 1]) if ((sx || sy) && !(small && (!sx || !sy))) out.push({sx, sy, lx:sx*hw, ly:sy*hh});
   { const kc = ED.kc || 1, V = ED.V; let ly = hh + 30 / kc; // ידית הזזה: מתחת לפריט (או בתוכו, אם אין מקום במסך)
-    if (V && !it.rot && it.y + it.h + 46 / kc > V.vy + V.vh) ly = hh - 26 / kc;
+    if (V && !it.rot && it.y + it.h + pad + 46 / kc > V.vy + V.vh) ly = small ? -hh - 52 / kc : hh - 26 / kc;
     out.push({move:true, lx:0, ly}); }
-  out.push({rot:true, lx:0, ly:-hh - 22 / (ED.kc || 1)});
+  out.push({rot:true, lx:small ? hw + 18 / (ED.kc || 1) : 0, ly:small ? -hh : -hh - 22 / (ED.kc || 1)});
   return out;
 }
 
@@ -3158,15 +3186,15 @@ function fromLocalVec(it, v){ const a = (it.rot || 0) * Math.PI / 180; return {x
 function edHit(p){
   const its = edItems(), tol = 10 / ED.kc;
   for (let i = its.length - 1; i >= 0; i--){
-    const it = its[i], l = toLocal(it, p);
-    if (Math.abs(l.x) <= it.w/2 + tol*.3 && Math.abs(l.y) <= it.h/2 + tol*.3) return i;
+    const it = its[i], l = toLocal(it, p), ex = tol*.3 + Math.max(0, (34 / ED.kc - Math.min(it.w, it.h)) / 2);
+    if (Math.abs(l.x) <= it.w/2 + ex && Math.abs(l.y) <= it.h/2 + ex) return i;
   }
   return -1;
 }
 function edHitHandle(p){
   const it = edSel(); if (!it || ED.crop) return null;
   const l = toLocal(it, p), tol = 16 / ED.kc;
-  const hs = edHandles(it); hs[hs.length - 1].ly = -it.h/2 - 22 / ED.kc;
+  const hs = edHandles(it);
   return hs.find(h => h.move && Math.hypot(l.x - h.lx, l.y - h.ly) < tol * 1.5) || hs.find(h => Math.hypot(l.x - h.lx, l.y - h.ly) < tol) || null;
 }
 function edBindPointer(){
@@ -3177,7 +3205,7 @@ function edBindPointer(){
     const p = edToMM(e); ED.ptrs.set(e.pointerId, p);
     if (ED.ptrs.size === 2){ edPinchStart(); return; }
     const hd = edHitHandle(p);
-    if (hd){ const it = edSel(); ED.drag = {type:hd.rot ? 'rotate' : hd.move ? 'move' : 'resize', hd, p0:p, s:{...it}, pushed:false}; if (!hd.rot && !hd.move && it.t === 'photo') it.uc = 1; return; }
+    if (hd){ const it = edSel(); ED.drag = {type:hd.rot ? 'rotate' : hd.move ? 'move' : 'resize', hd, p0:p, s:{...it}, ps:edLinked(it).map(o => ({o, s:{...o}})), pushed:false}; if (!hd.rot && !hd.move && it.t === 'photo') it.uc = 1; return; }
     const i = edHit(p);
     const now = Date.now();
     if (i >= 0 && i === ED.sel && edItems()[i].t === 'text' && now - (ED.lastTap || 0) < 350){ edEditText(); ED.lastTap = 0; return; }
@@ -3185,7 +3213,7 @@ function edBindPointer(){
     ED.lastTap = now;
     if (ED.crop && i !== ED.sel){ ED.crop = false; }
     if (i !== ED.sel){ ED.sel = i; edTools(); }
-    if (i >= 0){ const it = edItems()[i]; ED.drag = {type:ED.crop ? 'pan' : 'move', p0:p, s:{...it}, pushed:false}; }
+    if (i >= 0){ const it = edItems()[i]; ED.drag = {type:ED.crop ? 'pan' : 'move', p0:p, s:{...it}, ps:ED.crop ? [] : edLinked(it).map(o => ({o, s:{...o}})), pushed:false}; }
     edRender();
   });
   cv.addEventListener('pointermove', e => {
@@ -3202,10 +3230,11 @@ function edBindPointer(){
       const c = {x:d.s.x + d.s.w/2, y:d.s.y + d.s.h/2};
       let a = Math.atan2(p.y - c.y, p.x - c.x) * 180 / Math.PI + 90;
       a = ((a + 540) % 360) - 180;
-      for (const s of [-180, -90, 0, 90, 180]) if (Math.abs(a - s) < 3) a = s;
+      ED.rotSnap = false; for (const s of [-180, -135, -90, -45, 0, 45, 90, 135, 180]) if (Math.abs(a - s) < 3){ a = s; ED.rotSnap = true; }
       it.rot = Math.round(a * 10) / 10;
     }
     else if (d.type === 'resize') edResize(it, d, p);
+    if (d.ps && d.ps.length && d.type !== 'pan') edApplyGroup(it, d.s, d.ps);
     edSchedule();
   });
   const end = e => {
@@ -3216,9 +3245,9 @@ function edBindPointer(){
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
 }
 function edResize(it, d, p){
-  const s = d.s, hd = d.hd, l = toLocal(s, p), minS = 6;
-  const ax = -hd.sx * s.w/2, ay = -hd.sy * s.h/2;
-  let w = hd.sx ? Math.max(minS, Math.abs(l.x - ax)) : s.w, h = hd.sy ? Math.max(minS, Math.abs(l.y - ay)) : s.h;
+  const s = d.s, hd = d.hd, l = toLocal(s, p), l0 = toLocal(s, d.p0), minS = 3;
+  const ax = -hd.sx * s.w/2, ay = -hd.sy * s.h/2; // גודל לפי תנועת האצבע (לא לפי מיקום הידית) – מדויק גם כשהידית מרוחקת
+  let w = hd.sx ? Math.max(minS, s.w + hd.sx * (l.x - l0.x)) : s.w, h = hd.sy ? Math.max(minS, s.h + hd.sy * (l.y - l0.y)) : s.h;
   if (hd.sx && hd.sy){ const sc = Math.max(w / s.w, h / s.h); w = s.w * sc; h = s.h * sc; if (it.t === 'text') it.size = s.size * sc; }
   const cl = {x:hd.sx ? ax + hd.sx * w/2 : 0, y:hd.sy ? ay + hd.sy * h/2 : 0}, cg = fromLocalVec(s, cl);
   const cx = s.x + s.w/2 + cg.x, cy = s.y + s.h/2 + cg.y;
@@ -3235,7 +3264,7 @@ function edPinchStart(){
   const it = edSel(); if (!it){ ED.pinch = null; return; }
   const [a, b] = [...ED.ptrs.values()];
   ED.drag = null; pushUndo();
-  ED.pinch = {d0:Math.hypot(b.x - a.x, b.y - a.y), a0:Math.atan2(b.y - a.y, b.x - a.x), m0:{x:(a.x + b.x)/2, y:(a.y + b.y)/2}, s:{...it}};
+  ED.pinch = {d0:Math.hypot(b.x - a.x, b.y - a.y), a0:Math.atan2(b.y - a.y, b.x - a.x), m0:{x:(a.x + b.x)/2, y:(a.y + b.y)/2}, s:{...it}, ps:ED.crop ? [] : edLinked(it).map(o => ({o, s:{...o}}))};
 }
 function edPinchMove(){
   const it = edSel(), P0 = ED.pinch; if (!it || !P0) return;
@@ -3249,15 +3278,44 @@ function edPinchMove(){
     it.w = w; it.h = h; it.x = cx - w/2; it.y = cy - h/2;
     it.rot = Math.round(((P0.s.rot || 0) + (ang - P0.a0) * 180 / Math.PI) * 10) / 10;
     if (it.t === 'text') it.size = P0.s.size * sc;
+    if (P0.ps.length) edApplyGroup(it, P0.s, P0.ps);
   }
   edSchedule();
+}
+/* נעילה: מסגרת/אלמנט שננעלו לתמונה זזים, גדלים ומסתובבים יחד איתה */
+function edLinked(it){
+  if (!it || !ED.sp || !ED.sp.custom) return [];
+  const its = edItems();
+  if (it.t === 'photo') return its.filter(o => o !== it && o.of === it.id && o.lk);
+  if (it.of && it.lk){ const ph = its.find(o => o.t === 'photo' && o.id === it.of); return ph ? [ph, ...its.filter(o => o !== it && o.of === it.of && o.lk)] : []; }
+  return [];
+}
+function edApplyGroup(it, s, ps){
+  const sx = it.w / s.w, sy = it.h / s.h, da = (it.rot || 0) - (s.rot || 0), cx = it.x + it.w/2, cy = it.y + it.h/2;
+  for (const {o, s:os} of ps){
+    const l = toLocal(s, {x:os.x + os.w/2, y:os.y + os.h/2}); l.x *= sx; l.y *= sy;
+    const g = fromLocalVec(it, l);
+    o.w = os.w * sx; o.h = os.h * sy; o.x = cx + g.x - o.w/2; o.y = cy + g.y - o.h/2; o.rot = Math.round(((os.rot || 0) + da) * 10) / 10;
+    if (o.t === 'text' && os.size) o.size = os.size * Math.sqrt(sx * sy);
+  }
+}
+function edNudge(dx, dy, dr){
+  const it = edSel(); if (!it) return;
+  const s = {...it}, ps = edLinked(it).map(o => ({o, s:{...o}}));
+  it.x += dx; it.y += dy; if (dr) it.rot = Math.round(((it.rot || 0) + dr) * 10) / 10;
+  edApplyGroup(it, s, ps); edRender(); edNudgeInfo();
+}
+function edNudgeInfo(){
+  const it = edSel(), el = ED.el && ED.el.querySelector('#ndInfo'); if (!it || !el) return;
+  const f = v => (Math.round(v * 10) / 10).toFixed(1);
+  el.textContent = `X ${f(it.x)} · Y ${f(it.y)} · ${f(it.w)}×${f(it.h)} מ"מ · ${f(it.rot || 0)}°`;
 }
 /* הצמדה לקווים: מרכזי עמודים, קו הקיפול, שוליים וקצוות של פריטים אחרים */
 function edSnap(it){
   const G = ED.G, th = 7 / ED.kc; ED.guides = [];
   const xs = G.cover ? [0, G.W, ...G.foldXs, ...G.boardXs, G.frontX + G.panelW/2, G.backX + G.panelW/2, G.spineX + G.spine/2] : [0, G.m, G.pw/2, G.pw - G.m, G.pw, G.pw + G.m, G.pw*1.5, G.W - G.m, G.W];
   const ys = G.cover ? [0, G.H, ...G.foldYs, G.H/2] : [0, G.m, G.H/2, G.H - G.m, G.H];
-  edItems().forEach(o => { if (o === it) return; xs.push(o.x, o.x + o.w/2, o.x + o.w); ys.push(o.y, o.y + o.h/2, o.y + o.h); });
+  const lk = edLinked(it); edItems().forEach(o => { if (o === it || lk.includes(o)) return; xs.push(o.x, o.x + o.w/2, o.x + o.w); ys.push(o.y, o.y + o.h/2, o.y + o.h); });
   const tryAxis = (pos, size, cands, key) => {
     let best = null;
     for (const [off, c] of [[0, pos], [size/2, pos + size/2], [size, pos + size]]) for (const t of cands){ const dd = Math.abs(c - t); if (dd < th && (!best || dd < best.d)) best = {d:dd, v:t - off, g:t}; }
@@ -3279,6 +3337,8 @@ const ICON = {
   rot:'<path d="M21 12a9 9 0 11-3-6.7L21 8"/><path d="M21 3v5h-5"/>', up:'<path d="M12 19V5M5 12l7-7 7 7"/>', down:'<path d="M12 5v14M19 12l-7 7-7-7"/>',
   del:'<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>', font:'<path d="M5 20l6-16h2l6 16M8 13h8"/>', size:'<path d="M4 7V5h10v2M9 5v14M14 13v-2h6v2M17 11v8"/>',
   color:'<circle cx="12" cy="12" r="9"/><circle cx="8" cy="10" r="1.5" fill="currentColor"/><circle cx="12" cy="7.5" r="1.5" fill="currentColor"/><circle cx="16" cy="10" r="1.5" fill="currentColor"/>',
+  nudge:'<path d="M12 2v6M12 16v6M2 12h6M16 12h6M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/>',
+  lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/>', unlock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 017.5-2"/>',
   edit:'<path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/>', add:'<path d="M12 5v14M5 12h14"/>', dup:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 00-1-1H5a1 1 0 00-1 1v10a1 1 0 001 1h3"/>',
 };
 const tb = (a, label, ic, on) => `<button class="ed-tb${on ? ' on' : ''}" data-t="${a}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${ICON[ic]}</svg><span>${label}</span></button>`;
@@ -3296,14 +3356,15 @@ function edTools(){
     h = tb('addPhoto', 'הוספת תמונה', 'photo') + tb('addText', 'הוספת טקסט', 'text') + tb('addEl', 'אלמנטים', 'el') + tb('bg', 'רקע', 'bg') + tb('reset', 'עיצוב אוטומטי', 'reset');
     H.textContent = 'לחצו על תמונה או טקסט כדי לערוך. שתי אצבעות: הגדלה וסיבוב.';
   } else if (it.t === 'photo'){
-    h = tb('crop', ED.crop ? 'סיום הזזה' : 'הזזה בתוך המסגרת', 'crop', ED.crop) + tb('retouch', 'ריטוש', 'magic') + tb('swap', 'החלפה', 'swap') + tb('shape', 'צורה', 'shape') + tb('frame', 'מסגרת וצל', 'frame')
+    const fr = edItems().filter(o => o.t === 'el' && o.of === it.id), lkd = fr.some(o => o.lk);
+    h = tb('crop', ED.crop ? 'סיום הזזה' : 'הזזה בתוך המסגרת', 'crop', ED.crop) + tb('nudge', 'דיוק', 'nudge') + (fr.length ? tb('link', lkd ? 'נעול למסגרת' : 'נעילה למסגרת', lkd ? 'lock' : 'unlock', lkd) : '') + tb('retouch', 'ריטוש', 'magic') + tb('swap', 'החלפה', 'swap') + tb('shape', 'צורה', 'shape') + tb('frame', 'מסגרת וצל', 'frame')
       + tb('fx', 'אפקטים', 'fx') + tb('rot', 'סיבוב', 'rot') + tb('up', 'קדימה', 'up') + tb('down', 'אחורה', 'down') + tb('del', 'הסרה', 'del');
     H.textContent = ED.crop ? 'כל התמונה מוצגת – גררו כדי לבחור איזה חלק ייראה במסגרת. שתי אצבעות: זום.' : 'לחיצה כפולה על התמונה: הזזה בתוך המסגרת · ידיות לשינוי גודל';
   } else if (it.t === 'text'){
-    h = tb('editText', 'עריכה', 'edit') + tb('font', 'גופן', 'font') + tb('tsize', 'גודל', 'size') + tb('tcolor', 'צבע', 'color') + tb('rot', 'סיבוב', 'rot') + tb('dup', 'שכפול', 'dup') + tb('up', 'קדימה', 'up') + tb('del', 'מחיקה', 'del');
+    h = tb('editText', 'עריכה', 'edit') + tb('nudge', 'דיוק', 'nudge') + tb('font', 'גופן', 'font') + tb('tsize', 'גודל', 'size') + tb('tcolor', 'צבע', 'color') + tb('rot', 'סיבוב', 'rot') + tb('dup', 'שכפול', 'dup') + tb('up', 'קדימה', 'up') + tb('del', 'מחיקה', 'del');
     H.textContent = 'לחיצה כפולה על הטקסט לעריכה · גררו להזזה';
   } else if (it.t === 'el'){
-    h = tb('addEl', 'אלמנט נוסף', 'el') + tb('op', 'שקיפות וצל', 'fx') + tb('flip', 'היפוך', 'flip') + tb('rot', 'סיבוב', 'rot') + tb('dup', 'שכפול', 'dup') + tb('up', 'קדימה', 'up') + tb('down', 'אחורה', 'down') + tb('del', 'מחיקה', 'del');
+    h = tb('nudge', 'דיוק', 'nudge') + tb('link', it.of && it.lk ? 'נעול לתמונה' : 'נעילה לתמונה', it.of && it.lk ? 'lock' : 'unlock', !!(it.of && it.lk)) + tb('addEl', 'אלמנט נוסף', 'el') + tb('op', 'שקיפות וצל', 'fx') + tb('flip', 'היפוך', 'flip') + tb('rot', 'סיבוב', 'rot') + tb('dup', 'שכפול', 'dup') + tb('up', 'קדימה', 'up') + tb('down', 'אחורה', 'down') + tb('del', 'מחיקה', 'del');
     const dpi = elDpi(it);
     H.textContent = dpi < 150 ? `⚠️ האלמנט מוגדל מאוד (${dpi}dpi) – בהדפסה הוא עלול לצאת מטושטש. כדאי להקטין.` : 'גררו להזזה · פינות: שינוי גודל · עיגול עליון: סיבוב';
   } else {
@@ -3349,6 +3410,40 @@ function edAction(a, btn){
       ED.sel = its.length - 1; commit(); edTools(); edRender(); edEditText(); return;
     }
     case 'bg': { if (toggleSame('bg')) return; edBgPanel(); return; }
+    case 'link': {
+      if (!it) return; pushUndo();
+      if (it.t === 'photo'){ const fr = its.filter(o => o.t === 'el' && o.of === it.id), on = !fr.some(o => o.lk); fr.forEach(o => { o.lk = on ? 1 : 0; });
+        toast(on ? '🔒 התמונה והמסגרת נעולות – זזות וגדלות יחד' : '🔓 הנעילה בוטלה – אפשר להזיז כל אחד בנפרד'); }
+      else if (it.of && it.lk){ it.lk = 0; toast('🔓 האלמנט שוחרר מהתמונה'); }
+      else { // נעילה לתמונה שמתחת לאלמנט (זו שהוא הכי חופף לה)
+        const ov = o => Math.max(0, Math.min(it.x + it.w, o.x + o.w) - Math.max(it.x, o.x)) * Math.max(0, Math.min(it.y + it.h, o.y + o.h) - Math.max(it.y, o.y));
+        const ph = its.filter(o => o.t === 'photo').sort((p, q) => ov(q) - ov(p))[0];
+        if (!ph || !ov(ph)){ ED.undo.pop(); toast('הזיזו את האלמנט מעל תמונה ואז נעלו', 3000); return; }
+        it.of = ph.id; it.lk = 1; toast('🔒 האלמנט נעול לתמונה – יזוז ויגדל איתה'); }
+      commit(); edTools(); edRender(); return;
+    }
+    case 'nudge': {
+      if (!it) return; if (toggleSame('nudge')) return; ED.nstep = ED.nstep || 1;
+      edPanel(`<div class="ed-row" style="justify-content:center"><div class="nd-pad">
+          <span></span><button data-n="0,-1">▲</button><span></span>
+          <button data-n="-1,0">◀</button><b id="ndStep">${ED.nstep}<small>מ"מ</small></b><button data-n="1,0">▶</button>
+          <span></span><button data-n="0,1">▼</button><span></span></div>
+          <div class="nd-side"><button data-r="-1">↺ ${'0.5°'}</button><button data-r="1">↻ ${'0.5°'}</button><button data-r="0">0°</button></div></div>
+        <div class="ed-row"><span>צעד</span><div class="ed-chips">${[.2, .5, 1, 3, 10].map(v => `<button data-st="${v}" class="${v === ED.nstep ? 'on' : ''}">${v}</button>`).join('')}</div></div>
+        <div class="nd-info" id="ndInfo"></div>`, P => {
+        let tm = null, pushed = false;
+        const act = b => { if (b.dataset.n){ const [dx, dy] = b.dataset.n.split(',').map(Number); edNudge(dx * ED.nstep, dy * ED.nstep, 0); }
+          else if (b.dataset.r === '0'){ const it2 = edSel(); edNudge(0, 0, -(it2.rot || 0)); }
+          else edNudge(0, 0, +b.dataset.r * .5); };
+        const stop = () => { clearTimeout(tm); clearInterval(tm); tm = null; if (pushed){ commit(); pushed = false; } };
+        P.addEventListener('pointerdown', e => { const b = e.target.closest('[data-n],[data-r]'); if (!b) return; e.preventDefault();
+          if (!pushed){ pushUndo(); pushed = true; } act(b); tm = setTimeout(() => { tm = setInterval(() => act(b), 70); }, 380); }); // לחיצה ארוכה = תנועה רציפה
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => P.addEventListener(ev, stop));
+        P.addEventListener('click', e => { const st = e.target.closest('[data-st]'); if (!st) return; ED.nstep = +st.dataset.st;
+          P.querySelectorAll('[data-st]').forEach(x => x.classList.toggle('on', x === st)); P.querySelector('#ndStep').innerHTML = `${ED.nstep}<small>מ"מ</small>`; });
+        edNudgeInfo();
+      }); return;
+    }
     case 'reset': return confirmBox('לחזור לעיצוב האוטומטי?', 'כל העריכות בכפולה הזו יימחקו.', 'חזרה לאוטומטי', true).then(ok => {
       if (!ok) return; delete ED.sp.custom; fixFam(ED.sp, PV.cur); freezeSpread(ED.sp); ED.undo = []; ED.redo = []; ED.sel = -1; commit(); edTools(); edLoadImgs().then(edRender);
       toast('הכפולה חזרה לעיצוב האוטומטי');
@@ -3456,7 +3551,7 @@ function edAction(a, btn){
       });
       return;
     }
-    case 'del': pushUndo(); its.splice(ED.sel, 1); ED.sel = -1; ED.crop = false; commit(); edTools(); edRender(); return;
+    case 'del': { pushUndo(); const gone = it && it.t === 'photo' ? edLinked(it) : []; its.splice(ED.sel, 1); gone.forEach(o => { const j = its.indexOf(o); if (j >= 0) its.splice(j, 1); }); } ED.sel = -1; ED.crop = false; commit(); edTools(); edRender(); return;
     case 'dup': { pushUndo(); const c = JSON.parse(JSON.stringify(it)); c.x += 6; c.y += 6; its.push(c); ED.sel = its.length - 1; commit(); edRender(); return; }
     case 'editText': return edEditText();
     case 'font': {
@@ -5600,13 +5695,18 @@ function closeBook(){
 }
 /* ---------- הקלטת הדפדוף לסרטון (עם סימן מים) ---------- */
 async function bkRecord(){
-  const mime = ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m));
-  if (!mime || !HTMLCanvasElement.prototype.captureStream){ toast('הדפדפן הזה לא תומך בהקלטת וידאו. נסו בכרום.', 4000); return; }
+  const sup = m => window.MediaRecorder && MediaRecorder.isTypeSupported(m);
+  if (!sup('video/webm') && !sup('video/mp4') || !HTMLCanvasElement.prototype.captureStream){ toast('הדפדפן הזה לא תומך בהקלטת וידאו. נסו בכרום.', 4000); return; }
   if (BK.busy || BK.rec) return;
   const n = BK.n, secs = Math.round(3 + (n + 1) * 2.1);
-  if (!(await confirmBox('הורדת האלבום כסרטון', `הספר ידפדף לבד מהכריכה ועד הגב ויוקלט לסרטון (כ-${secs} שניות), עם סימן המים "חי אפליקציות". השאירו את המסך פתוח עד הסיום.`, 'התחלת הקלטה'))) return;
+  const ch = await bkVideoDialog(secs); if (!ch) return;
+  const withMus = ch.kind !== 'none';
+  const mime = (withMus ? ['video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs="avc1.42E01E, mp4a.40.2"', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/mp4', 'video/webm']
+    : ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']).find(sup);
+  const mus = withMus ? await musStart(ch.kind, ch.file) : null;
   const rc = document.createElement('canvas'); rc.width = 1280; rc.height = 720; const rx = rc.getContext('2d');
-  const mr = new MediaRecorder(rc.captureStream(30), {mimeType:mime, videoBitsPerSecond:7e6}), chunks = [];
+  const vs = rc.captureStream(30); if (mus && mus.track) vs.addTrack(mus.track);
+  const mr = new MediaRecorder(vs, {mimeType:mime, videoBitsPerSecond:7e6, audioBitsPerSecond:160000}), chunks = [];
   mr.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
   const done = new Promise(r => { mr.onstop = r; });
   const R = BK.rec = {mr, cancel:false}; BK.play = false; BK.pos = 0;
@@ -5623,8 +5723,10 @@ async function bkRecord(){
       bar.querySelector('b').textContent = `מקליט… ${Math.round((p + 1) / (n + 1) * 100)}%`;
       await hold(p + 1, p === n ? 1800 : 1200);
     }
+    if (mus && !R.cancel){ mus.fade(1.4); await hold(n + 1, 1500); } // המוזיקה דועכת בעדינות בסוף
   }catch(e){ console.warn(e); R.cancel = true; }
   try{ if (mr.state !== 'inactive') mr.stop(); }catch(_){}
+  if (mus) mus.stop();
   await done; bar.remove(); BK.rec = null; if (BK.open) bkPaint();
   if (R.cancel || !chunks.length){ if (BK.open) toast('ההקלטה בוטלה'); return; }
   const ext = mime.startsWith('video/mp4') ? 'mp4' : 'webm', base = (albumTitle() || 'album').replace(/[\\/:*?"<>|]/g, '').trim() || 'album';
@@ -6105,9 +6207,9 @@ function vWrapPhoto(items, p, id, extra = {}){
   for (let i = items.length - 1; i >= 0; i--) if (items[i].t === 'el' && items[i].of === p.id && String(items[i].el).startsWith('v:')) items.splice(i, 1);
   if (!id) return;
   const idx = items.indexOf(p) + 1;
-  if (id === 'v:cr-scroll'){ items.splice(idx, 0, ...vCornerBoxes(p).map(a => Object.assign({t:'el', el:id, op:1, of:p.id, deco:1}, a, extra))); return; }
+  if (id === 'v:cr-scroll'){ items.splice(idx, 0, ...vCornerBoxes(p).map(a => Object.assign({t:'el', el:id, op:1, of:p.id, lk:1, deco:1}, a, extra))); return; }
   const b = vFrameBox(p, id);
-  items.splice(idx, 0, Object.assign({t:'el', el:id, ...b, rot:0, op:1, of:p.id, deco:1}, extra));
+  items.splice(idx, 0, Object.assign({t:'el', el:id, ...b, rot:p.rot || 0, op:1, of:p.id, lk:1, deco:1}, extra));
 }
 let VORN_TH = null;
 function vornThumbs(){
@@ -6191,7 +6293,7 @@ function autoEls(L, sp, idx){
     if (others.some(o => !(o.t === 'rect' && (o.w * o.h < 40 || inside(box, o, 1))) && hit(box, o, 1))) continue;
     if (outl.length) L.items = L.items.filter(o => !outl.includes(o)); // קו מתאר ישן מתחלף במסגרת
     Object.assign(p, {x:q.x, y:q.y, w:q.w, h:q.h});
-    L.items.splice(L.items.indexOf(p) + 1, 0, {t:'el', el:fr, ...box, rot:p.rot || 0, op:1, deco:1, auto:1, of:p.id}); return;
+    L.items.splice(L.items.indexOf(p) + 1, 0, {t:'el', el:fr, ...box, rot:p.rot || 0, op:1, deco:1, auto:1, of:p.id, lk:1}); return;
   }
   // 2. סלסולי פינה סביב התמונה הגדולה בכפולה, אם יש סביבה מקום פנוי
   const big = L.items.filter(it => okPhoto(it, .3)).sort((a, b) => b.w*b.h - a.w*a.h);
@@ -6201,7 +6303,7 @@ function autoEls(L, sp, idx){
     const ok = boxes.every(b => b.x >= edge && b.y >= edge && b.x + b.w <= G.W - edge && b.y + b.h <= G.H - edge
       && !(b.x < G.W/2 + fold && b.x + b.w > G.W/2 - fold) && !blocks(b, p));
     if (!ok) continue;
-    boxes.forEach(b => L.items.push({t:'el', el:'v:cr-scroll', ...b, op:1, deco:1, auto:1, of:p.id}));
+    boxes.forEach(b => L.items.push({t:'el', el:'v:cr-scroll', ...b, op:1, deco:1, auto:1, of:p.id, lk:1}));
     return;
   }
 }
@@ -6209,6 +6311,90 @@ function autoElsCount(){
   if (!PV.plan) return 0; let n = 0; const keep = CUR_SP_INDEX;
   try{ PV.plan.spreads.forEach((sp, i) => { CUR_SP_INDEX = i; try{ n += layoutSpread(sp).items.some(x => x.auto) ? 1 : 0; }catch(_){} }); } finally{ CUR_SP_INDEX = keep; }
   return n;
+}
+
+/* ---------- מוזיקת רקע לסרטון: מנגינה שנוצרת בטלפון (בלי קבצים, בלי זכויות יוצרים) או קובץ מהטלפון ---------- */
+const MUS_PRESETS = {
+  calm:  {n:'🎹 פסנתר רגוע', bpm:68, chords:[[48, 55, 64, 71], [45, 52, 60, 67], [41, 48, 57, 64], [43, 50, 59, 62]], pat:[0, 1, 2, 3, 2, 1, 2, 3], bell:false},
+  happy: {n:'🎉 שמח ומרומם', bpm:96, chords:[[48, 55, 64, 67], [43, 50, 59, 62], [45, 52, 60, 64], [41, 48, 57, 60]], pat:[0, 2, 1, 3, 0, 2, 3, 2], bell:true},
+  emo:   {n:'💫 מרגש', bpm:60, chords:[[45, 52, 60, 64], [41, 48, 57, 60], [48, 55, 64, 67], [43, 50, 59, 62]], pat:[0, 1, 2, 3, 1, 2, 3, 2], bell:false}
+};
+const midiHz = m => 440 * Math.pow(2, (m - 69) / 12);
+function musReverb(ac, secs = 2.6){
+  const len = Math.floor(ac.sampleRate * secs), buf = ac.createBuffer(2, len, ac.sampleRate);
+  for (let ch = 0; ch < 2; ch++){ const d = buf.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2.6); }
+  const cv = ac.createConvolver(); cv.buffer = buf; return cv;
+}
+async function musStart(kind, file){
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return null;
+  const ac = new AC(); try{ await ac.resume(); }catch(_){}
+  const master = ac.createGain(); master.gain.value = 0;
+  const dest = ac.createMediaStreamDestination(); master.connect(dest); master.connect(ac.destination);
+  const now = ac.currentTime; master.gain.linearRampToValueAtTime(.9, now + 1.6);
+  const M = {ac, master, dest, track:dest.stream.getAudioTracks()[0], timer:null,
+    fade(sec = 1.3){ const t = ac.currentTime; master.gain.cancelScheduledValues(t); master.gain.setValueAtTime(master.gain.value, t); master.gain.linearRampToValueAtTime(0, t + sec); },
+    stop(){ clearInterval(M.timer); try{ M.src && M.src.stop(); }catch(_){} setTimeout(() => ac.close().catch(() => {}), 300); }};
+  if (kind === 'file' && file){
+    try{ const buf = await ac.decodeAudioData(await file.arrayBuffer());
+      const src = ac.createBufferSource(); src.buffer = buf; src.loop = true; const g = ac.createGain(); g.gain.value = .85; src.connect(g).connect(master); src.start(); M.src = src;
+    }catch(e){ toast('לא הצלחנו לקרוא את קובץ המוזיקה', 3500); M.stop(); return null; }
+    return M;
+  }
+  const P = MUS_PRESETS[kind] || MUS_PRESETS.calm, beat = 60 / P.bpm, step = beat / 2;
+  const rev = musReverb(ac), wet = ac.createGain(); wet.gain.value = .32; rev.connect(wet).connect(master);
+  const dry = ac.createGain(); dry.gain.value = .75; dry.connect(master);
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600; lp.connect(dry); lp.connect(rev);
+  const piano = (m, t, vel, dur = 2.8) => { // צליל פסנתר רך: בסיס + הרמוניות שדועכות
+    const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vel, t + .006); g.gain.exponentialRampToValueAtTime(.0008, t + dur); g.connect(lp);
+    [[1, 'triangle', 1], [2, 'sine', .35], [3, 'sine', .12]].forEach(([mul, type, amp]) => { const o = ac.createOscillator(), og = ac.createGain();
+      o.type = type; o.frequency.value = midiHz(m) * mul; o.detune.value = (Math.random() - .5) * 6; og.gain.value = amp; o.connect(og).connect(g); o.start(t); o.stop(t + dur + .05); });
+  };
+  const pad = (notes, t, dur) => { const g = ac.createGain(), f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 700;
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(.022, t + dur * .35); g.gain.linearRampToValueAtTime(0, t + dur); f.connect(g).connect(rev); g.connect(dry);
+    notes.forEach(m => [-7, 7].forEach(dt => { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = midiHz(m); o.detune.value = dt; o.connect(f); o.start(t); o.stop(t + dur + .1); })); };
+  const melody = [76, 74, 72, 79, 77, 76, 74, 72];
+  let n = 0, next = ac.currentTime + .15;
+  const sched = () => {
+    while (next < ac.currentTime + .4){
+      const bar = Math.floor(n / 8), chord = P.chords[Math.floor(bar / 2) % P.chords.length], i = n % 8;
+      if (i === 0 && bar % 2 === 0) pad(chord.slice(1), next, beat * 8);
+      if (i === 0) piano(chord[0] - 12, next, .32, 3.5);
+      piano(chord[P.pat[i] % chord.length] + 12, next, i % 2 ? .1 : .15);
+      if (bar % 4 >= 2 && (i === 0 || i === 4 || (i === 6 && bar % 2))) piano(melody[(bar + i) % melody.length], next, .12, 3.2);
+      if (P.bell && i === 4 && bar % 2) piano(chord[3] + 24, next, .05, 2);
+      next += step; n++;
+    }
+  };
+  sched(); M.timer = setInterval(sched, 90);
+  return M;
+}
+/* חלון לפני ההקלטה: בחירת מוזיקה + השמעה לדוגמה */
+function bkVideoDialog(secs){
+  return new Promise(res => {
+    let kind = localStorage.getItem('hai-mus') || 'calm', file = null, prev = null;
+    const opts = [...Object.entries(MUS_PRESETS).map(([k, v]) => [k, v.n]), ['file', '📁 מוזיקה מהטלפון'], ['none', '🔇 בלי מוזיקה']];
+    const s = modalBox(`<h3>הורדת האלבום כסרטון</h3><p>הספר ידפדף לבד מהכריכה ועד הגב ויוקלט לסרטון (כ-${secs} שניות), עם סימן המים "חי אפליקציות". השאירו את המסך פתוח עד הסיום.</p>
+      <p style="margin:10px 0 6px"><b>מוזיקת רקע</b></p><div class="mus-opts">${opts.map(([k, n]) => `<button class="chip" data-k="${k}">${n}</button>`).join('')}</div>
+      <div class="mus-file" style="display:none;margin-top:8px"><input type="file" accept="audio/*"><small style="display:block;opacity:.7;margin-top:4px">שירים מסחריים מוגנים בזכויות יוצרים – לשימוש אישי בלבד</small></div>
+      <div class="acts" style="margin-top:12px"><button class="btn ghost" data-a="prev">▶ השמעה לדוגמה</button></div>
+      <div class="acts"><button class="btn ghost" data-a="0">ביטול</button><button class="btn" data-a="1">התחלת הקלטה</button></div>`);
+    const paint = () => { s.querySelectorAll('[data-k]').forEach(b => { const on = b.dataset.k === kind; b.style.background = on ? '#A8552E' : ''; b.style.color = on ? '#fff' : ''; });
+      s.querySelector('.mus-file').style.display = kind === 'file' ? '' : 'none'; s.querySelector('[data-a="prev"]').style.display = kind === 'none' ? 'none' : ''; };
+    const stopPrev = () => { if (prev){ prev.fade(.4); const p = prev; setTimeout(() => p.stop(), 450); prev = null; s.querySelector('[data-a="prev"]').textContent = '▶ השמעה לדוגמה'; } };
+    paint();
+    s.querySelector('input[type=file]').onchange = e => { file = e.target.files[0] || null; };
+    s.onclick = async e => {
+      const k = e.target.closest('[data-k]'); if (k){ stopPrev(); kind = k.dataset.k; paint(); return; }
+      const a = e.target.closest('[data-a]'); if (!a){ if (e.target === s){ stopPrev(); s.remove(); res(null); } return; }
+      if (a.dataset.a === 'prev'){ if (prev) return stopPrev(); if (kind === 'file' && !file) return toast('בחרו קודם קובץ מוזיקה');
+        prev = await musStart(kind, file); a.textContent = '■ עצירה'; const p = prev; setTimeout(() => { if (prev === p) stopPrev(); }, 9000); return; }
+      stopPrev(); s.remove();
+      if (a.dataset.a === '0') return res(null);
+      if (kind === 'file' && !file){ toast('לא נבחר קובץ – הסרטון יוקלט בלי מוזיקה', 3000); kind = 'none'; }
+      try{ localStorage.setItem('hai-mus', kind); }catch(_){}
+      res({kind, file});
+    };
+  });
 }
 
 /* =========================================================
