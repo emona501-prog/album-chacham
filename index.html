@@ -341,6 +341,7 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
 .star-grid span{font-size:11px;color:var(--muted);padding:3px 0}
 .star-grid button.on{box-shadow:0 0 0 3px var(--accent)}
 .star-grid em{position:absolute;top:5px;inset-inline-start:5px;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font-style:normal;font-size:14px;display:grid;place-items:center}
+.star-grid em{width:auto;min-width:24px;padding:0 5px;border-radius:12px}
 .star-modal,.ev-modal{max-height:88vh;overflow-y:auto}
 
 .el-scrim{align-items:flex-end;z-index:79}
@@ -526,6 +527,7 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
     <div class="ctrl-row"><span>כיוון האלבום<br><small style="color:var(--muted)">עברית נפתח מימין · אנגלית נפתח משמאל</small></span><div class="seg" id="dirSeg"><button data-dir="rtl">עברית</button><button data-dir="ltr">אנגלית</button></div></div>
     <div class="ctrl-row"><span>סוג האירוע<br><small style="color:var(--muted)" id="evSum"></small></span><button class="mini" id="evBtn">שינוי</button></div>
     <div class="ctrl-row"><span>בעל השמחה<br><small style="color:var(--muted)" id="starSum"></small></span><button class="mini" id="starBtn">מי הכוכב?</button></div>
+    <div class="ctrl-row"><span>הדגשת אנשים ⭐<br><small style="color:var(--muted)" id="focusSum">מי שתבחרו יקבל תמונות גדולות ובולטות יותר</small></span><button class="mini" id="focusBtn">בחירה</button></div>
     <div class="ctrl-row"><span>כותרות פרק<br><small style="color:var(--muted)" id="scSum">"הריקודים", "החופה"… לפי סוג התמונות</small></span><button class="switch" id="scSw"></button></div>
     <div class="ctrl-row"><span>עיטורים אוטומטיים<br><small style="color:var(--muted)">עיטור וסמל האירוע בפתיחה ובכריכה</small></span><button class="switch" id="decoSw"></button></div>
     <div class="ctrl-row"><span>עיטור מקצועי אוטומטי ✨<br><small style="color:var(--muted)">מסגרות זהב ועיטורי פינה סביב תמונות – רק איפה שיש מקום, חדים בדפוס</small></span><button class="switch" id="elsSw"></button></div>
@@ -1346,7 +1348,7 @@ function pickBest(ids, target, n = 1){
   const sc = id => { const m = META.get(id) || {width:1, height:1};
     const face = Math.min(1, ((m.faces || []).reduce((a, f) => Math.max(a, f.w), 0)) * 5); // פנים גדולות = תמונה ראשית טובה
     const sharp = m.sharp ? Math.min(1, m.sharp / 900) : .5;
-    return Math.abs(Math.log(asp(id) / target)) - Math.min(.25, (m.width * m.height) / 4e8) - .35*face - .2*sharp + (m.cat === 'detail' ? .2 : 0) - (m.star ? .45 : 0); };
+    return Math.abs(Math.log(asp(id) / target)) - Math.min(.25, (m.width * m.height) / 4e8) - .35*face - .2*sharp + (m.cat === 'detail' ? .2 : 0) - (m.star ? .45 : 0) - (m.fw || 0) * .55; };
   const sorted = ids.slice().sort((a, b) => sc(a) - sc(b)).slice(0, n);
   return sorted.concat(ids.filter(i => !sorted.includes(i)));
 }
@@ -1713,7 +1715,7 @@ function photoNeed(id){
   const H = typeof headBoxes === 'function' ? headBoxes(m) : (m.faces || []).map(f => [f.x - f.w/2, 0, f.x + f.w/2, 0]);
   const n = H.length; if (!n) return m.cat === 'detail' ? -.3 : 0;
   const minW = Math.min(...H.map(h => h[2] - h[0])), spread = Math.max(...H.map(h => h[2])) - Math.min(...H.map(h => h[0]));
-  return Math.min(n, 12) * .28 + clamp(.07 / Math.max(minW, .01), 0, 4) * .35 + (n >= 4 ? spread * .8 : 0) + (m.star ? .5 : 0);
+  return Math.min(n, 12) * .28 + clamp(.07 / Math.max(minW, .01), 0, 4) * .35 + (n >= 4 ? spread * .8 : 0) + (m.star ? .5 : 0) + (m.fw || 0) * 1.1;
 }
 function sizeByPeople(L){
   const ph = L.items.filter(i => i.t === 'photo' && META.get(i.id));
@@ -2759,6 +2761,7 @@ function sessionize(ps){
   }
   return out;
 }
+const HERO_FAMS = ['cardHero', 'centerHero', 'heroGrid', 'twoBig', 'shapeHero'];
 function planAlbumSmart(ps, seed){
   const rnd = mulberry32(seed), spreads = [];
   if (!ps.length) return spreads;
@@ -2783,6 +2786,8 @@ function planAlbumSmart(ps, seed){
     for (const size of sizes){
       const ids = s.items.slice(idx, idx + size).map(p => p.id); idx += size;
       let c = Object.entries(cp.fams).filter(([f]) => fits(f, ids.length) && !recent.includes(f));
+      { const fwMax = Math.max(0, ...ids.map(id => (META.get(id) || {}).fw || 0)); // יש כאן מישהו מודגש – מעדיפים עיצוב עם תמונה ראשית גדולה
+        if (fwMax) c = c.map(([f, w]) => [f, HERO_FAMS.includes(f) ? w * (1 + fwMax * .7) : w]); }
       const chapter = firstOfRun && s.scene && S.project.sceneTitles && SCENE_TITLES[s.scene];
       if (chapter){ const cc = ['cardHero', 'textMosaic'].filter(f => fits(f, ids.length)).map(f => [f, 3]); if (cc.length) c = cc; }
       let pick = c.length ? pickDesign(ids, c, rnd, spreads.length, s.cat) : null;
@@ -2808,6 +2813,7 @@ function starScore(p){
   if (nStars){ s += p.star ? 3 + p.starW * 6 : -2;
     if (nStars >= 2 && p.star >= 2) s += 2; // חתונה: שניהם יחד
     if (p.star && F.length <= nStars + 1) s += .8; }
+  if (p.fw) s += p.fw * (nStars ? .5 : 1.3); // מי שביקשו להדגיש – מועמד חזק לפתיחה ולכריכה
   { const ff = faceFocus(p); if (ff && ff.box[2] - ff.box[0] > .7) s -= 1.2; } // פנים פרושות על כל הרוחב – לא יתאימו לחלון ראשי
   return s;
 }
@@ -4342,10 +4348,19 @@ function suggestStars(){
   }
   return out;
 }
+/* הדגשת אנשים: לכל תמונה p.fw = רמת ההדגשה הגבוהה של מי שמופיע בה (1 מודגש, 2 מודגש מאוד), מוחלש אם הפנים קטנטנות */
+function markFocus(){
+  const fo = ((S.project && S.project.focus) || []).map(f => ({d:dq8(f.k), l:f.l}));
+  S.photos.forEach(p => { p.fw = 0;
+    if (!fo.length) return;
+    (p.faces || []).forEach(f => { if (!f.d) return; const d = dq8(f.d);
+      for (const x of fo) if (dist(x.d, d) < .5){ const nF = (p.faces || []).length; p.fw = Math.max(p.fw, x.l * (f.w < .03 ? .4 : nF > 6 ? .6 : 1)); } }); });
+}
 /* מסמן את פני הכוכב בכל תמונה: m.star = כמה פעמים, m.starW = גודל הפנים */
 function markStars(){
   const st = (S.project.stars || []).map(s => dq8(s));
   S.photos.forEach(p => { p.star = 0; p.starW = 0; (p.faces || []).forEach(f => { f.st = 0; }); });
+  markFocus();
   if (!st.length) return;
   S.photos.forEach(p => (p.faces || []).forEach(f => {
     if (!f.d) return; const d = dq8(f.d);
@@ -4459,6 +4474,33 @@ async function rebuildForStars(){
   savePlan(); PV.cur = 0; buildStrip(); await showSpread(0);
   toast('האלבום סודר מחדש סביב בעל השמחה ✓');
 }
+/* מסך "הדגשת אנשים": כל לחיצה על פנים מחליפה: רגיל → ★ מודגש → ★★ מודגש מאוד → רגיל */
+async function focusButton(){
+  if (PPL.active){ toast('עדיין מזהה אנשים… עוד רגע'); return; }
+  if (!PPL.clusters) clusterPeople();
+  const cl = (PPL.clusters || []).slice(0, 16);
+  if (!cl.length){ toast('לא נמצאו מספיק פנים כדי לזהות אנשים'); return; }
+  const lv = {}; (S.project.focus || []).forEach(f => { const c = cl.find(c => dist(dq8(f.k), c.c) < .5); if (c) lv[c.key] = f.l; });
+  const thumbs = await Promise.all(cl.map(c => faceThumb(c.best)));
+  const s = document.createElement('div'); s.className = 'scrim modal-scrim';
+  const draw = () => { s.innerHTML = `<div class="modal star-modal"><h3>את מי להדגיש באלבום?</h3>
+      <p>לחיצה אחת = <b>★ מודגש</b> · שתיים = <b>★★ מודגש מאוד</b> · שלוש = ביטול.<br>התמונות שלהם יקבלו את המקומות הגדולים והבולטים, ויעדיפו אותן לפתיחה ולכריכה.</p>
+      <div class="star-grid">${cl.map((c, i) => { const l = lv[c.key] || 0; return `<button data-c="${i}" class="${l ? 'on' : ''}"><img src="${thumbs[i]}" alt=""><span>${c.n} תמונות</span>${l ? `<em>${'★'.repeat(l)}</em>` : ''}</button>`; }).join('')}</div>
+      <div class="acts" style="margin-top:14px"><button class="btn ghost" data-a="clr">ניקוי</button><button class="btn ghost" data-a="x">ביטול</button><button class="btn" data-a="ok">אישור</button></div></div>`; };
+  draw(); document.body.appendChild(s);
+  s.onclick = async e => {
+    const b = e.target.closest('[data-c]'); if (b){ const k = cl[+b.dataset.c].key; lv[k] = ((lv[k] || 0) + 1) % 3; if (!lv[k]) delete lv[k]; draw(); return; }
+    const a = e.target.closest('[data-a]'); if (!a) return;
+    if (a.dataset.a === 'clr'){ Object.keys(lv).forEach(k => delete lv[k]); draw(); return; }
+    s.remove(); if (a.dataset.a === 'x') return;
+    S.project.focus = Object.entries(lv).map(([k, l]) => ({k, l})); touchProject();
+    markStars(); S.photos.forEach(p => DB.put('photos', p).catch(() => {})); updStarRow();
+    if (PV.plan){ PV.plan.spreads = replanKeepCustom(PV.plan.spreads, PV.plan.seed);
+      if (PV.plan.cover && !PV.plan.cover.custom){ delete PV.plan.cover; ensureCover(); }
+      savePlan(); buildStrip(); await showSpread(PV.cur = 0); }
+    toast(S.project.focus.length ? 'האלבום סודר מחדש – המודגשים בולטים יותר ⭐' : 'ההדגשה בוטלה', 3500);
+  };
+}
 /* כפתור בעמוד האלבום */
 async function starButton(){
   if (PPL.active){ toast('עדיין מזהה אנשים… עוד רגע'); return; }
@@ -4470,6 +4512,7 @@ async function starButton(){
 }
 async function eventButton(){ const ok = await askEvent(); if (ok){ updStarRow(); if (PV.active){ showSpread(PV.cur); paintStrip(); } } }
 function updStarRow(){
+  if ($('focusSum')){ const f = (S.project.focus || []); $('focusSum').textContent = f.length ? `${f.length} ${f.length > 1 ? 'אנשים מודגשים' : 'אדם מודגש'} ✓` : 'מי שתבחרו יקבל תמונות גדולות ובולטות יותר'; }
   const ev = EVENTS[S.project.event];
   if ($('evSum')) $('evSum').textContent = ev ? `${ev.icon} ${ev.n}${S.project.heroName ? ' · ' + S.project.heroName : ''}` : 'לא נבחר';
   if ($('starSum')) $('starSum').textContent = (S.project.stars || []).length ? `נבחר${(S.project.stars || []).length > 1 ? 'ו ' + S.project.stars.length : ''} ✓` : PPL.active ? 'מזהה אנשים…' : 'לא נבחר';
@@ -4602,6 +4645,7 @@ function waitPeople(){
 }
 $('evBtn').onclick = eventButton;
 $('starBtn').onclick = starButton;
+$('focusBtn').onclick = focusButton;
 
 /* =========================================================
    שלב 9 – אלמנטים: מגירת אלמנטים בעורך (מובנים + שלי), הוספה, הזזה, שקיפות, היפוך
