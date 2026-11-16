@@ -1737,12 +1737,13 @@ function layoutSpread(sp){
 }
 /* כלל עיצוב: כמה שיותר אנשים בתמונה (והפנים קטנות יותר) – המשבצת צריכה להיות גדולה יותר.
    מסדר מחדש את התמונות בין המשבצות של הכפולה: הגדולה ביותר לתמונה הקבוצתית, בלי לפגוע מדי בהתאמת הצורה */
+let PEAK_ID = null; // תמונת השיא של הכפולה – מקבלת את המשבצת הגדולה
 function photoNeed(id){
   const m = META.get(id); if (!m) return 0;
   const H = typeof headBoxes === 'function' ? headBoxes(m) : (m.faces || []).map(f => [f.x - f.w/2, 0, f.x + f.w/2, 0]);
   const n = H.length; if (!n) return m.cat === 'detail' ? -.3 : 0;
   const minW = Math.min(...H.map(h => h[2] - h[0])), spread = Math.max(...H.map(h => h[2])) - Math.min(...H.map(h => h[0]));
-  return Math.min(n, 12) * .28 + clamp(.07 / Math.max(minW, .01), 0, 4) * .35 + (n >= 4 ? spread * .8 : 0) + (m.star ? .5 : 0) + (m.fw || 0) * 1.1;
+  return Math.min(n, 12) * .28 + clamp(.07 / Math.max(minW, .01), 0, 4) * .35 + (n >= 4 ? spread * .8 : 0) + (m.star ? .5 : 0) + (m.fw || 0) * 1.1 + (id === PEAK_ID ? 1.2 : 0);
 }
 function sizeByPeople(L){
   const ph = L.items.filter(i => i.t === 'photo' && META.get(i.id));
@@ -1775,7 +1776,7 @@ function layoutSpread0(sp){
   const L = f.gen(sp.ids.slice(), G, sp.v || 0);
   CUR_SP = null; L.keepFill = L_KEEPFILL; L_KEEPFILL = false;
   L.paper = G.T.paper; L.G = G;
-  if (sp.fam !== 'title' && sp.fam !== 'tpl') sizeByPeople(L); // תמונה עם הרבה אנשים מקבלת משבצת גדולה
+  if (sp.fam !== 'title' && sp.fam !== 'tpl'){ PEAK_ID = sp.hero || null; try{ sizeByPeople(L); } finally{ PEAK_ID = null; } } // תמונה עם הרבה אנשים מקבלת משבצת גדולה
   if (typeof isLTR === 'function' && isLTR()){ mirrorItems(L.items, G.W); mirrorBg(L.bg); }
   if (typeof applyFaces === 'function') applyFaces(L);
   if (typeof applyGlobalBg === 'function'){ CUR_SP_INDEX = PV.plan ? Math.max(0, PV.plan.spreads.indexOf(sp)) : 0; applyGlobalBg(L); }
@@ -2820,6 +2821,24 @@ function sessionize(ps){
   return out;
 }
 const HERO_FAMS = ['cardHero', 'centerHero', 'heroGrid', 'twoBig', 'shapeHero'];
+const PEAK_FAMS = {twoBig:4, shapeHero:3, softCollage:2, collage:2, cardHero:2};
+/* קצב: רגעי שיא (תמונה קרובה, חדה ובולטת) מקבלים כפולה רגועה של 2–3 תמונות; ביניהם כפולות מלאות יותר */
+function rhythmChunks(items, target, isPeak){
+  const n = items.length; if (n < 5) return null;
+  const peaks = []; let last = -9;
+  items.forEach((p, i) => { if (isPeak(p) && i - last >= 4 && n - i >= 2){ peaks.push(i); last = i; } });
+  if (!peaks.length) return null;
+  const out = [], fill = (a, b) => { const m = b - a; if (m <= 0) return; const k = Math.max(1, Math.round(m / target)); for (let i = 0; i < k; i++) out.push({size:Math.floor(m / k) + (i < m % k ? 1 : 0)}); };
+  let pos = 0;
+  for (const pi of peaks){
+    let a = pi; if (pi - pos === 1) a = pos; // תמונה בודדת לפני השיא מצטרפת אליו
+    fill(pos, a);
+    let len = Math.min(n - a, (pi - a) + 2); if (n - (a + len) === 1) len++; // לא משאירים תמונה בודדת אחרי
+    out.push({size:len, peak:items[pi].id}); pos = a + len;
+  }
+  if (n - pos === 1 && out.length){ const lastC = out[out.length - 1]; lastC.size++; } else fill(pos, n);
+  return out.every(c => c.size >= 2 && c.size <= 13) ? out : null;
+}
 function planAlbumSmart(ps, seed){
   const rnd = mulberry32(seed), spreads = [];
   if (!ps.length) return spreads;
@@ -2833,17 +2852,24 @@ function planAlbumSmart(ps, seed){
   const tp = pickDesign(opening.map(p => p.id), [['title', 1]], rnd, 0, 'portrait');
   spreads.push({fam:'title', v:tp ? tp.v : 0, ids:opening.map(p => p.id), cat:'portrait'});
   const rest = all.filter(p => !opening.includes(p));
+  // רגעי שיא: עד תמונה אחת לכל ~14 תמונות – הכי בולטות (פנים גדולות, חדות, מודגשים) מעל רף גבוה
+  const hs = rest.map(p => [p, starScore(p) + (p.fw || 0) * .8]).filter(([p]) => !isBlink(p) && (p.faces || []).some(f => f.w >= .08)).sort((a, b) => b[1] - a[1]);
+  const peakSet = new Set(hs.slice(0, Math.max(0, Math.floor(rest.length / 14))).map(([p]) => p.id));
+  const isPeak = p => peakSet.has(p.id);
   const recent = [];
   for (const s of sessionize(rest)){
     const cp = (s.scene && SCENE_PLAN[s.scene]) || CAT_PLAN[s.cat] || CAT_PLAN.event, n = s.items.length;
     let firstOfRun = true;
     let k = Math.max(1, Math.round(n / cp.target));
     let sizes = []; for (let i = 0; i < k; i++) sizes.push(Math.floor(n / k) + (i < n % k ? 1 : 0));
+    let peakOf = []; // לכל מקטע: מזהה תמונת השיא (אם יש)
+    if (!(s.scene && S.project.sceneTitles && SCENE_TITLES[s.scene] && n > 12)){ const rc = rhythmChunks(s.items, cp.target, isPeak); if (rc){ sizes = rc.map(c => c.size); peakOf = rc.map(c => c.peak || null); } }
     if (s.scene && S.project.sceneTitles && SCENE_TITLES[s.scene] && sizes[0] > 10 && n > 12){ const r = n - 10, k2 = Math.max(1, Math.round(r / cp.target)); sizes = [10]; for (let i = 0; i < k2; i++) sizes.push(Math.floor(r / k2) + (i < r % k2 ? 1 : 0)); }
     let idx = 0;
-    for (const size of sizes){
+    for (let si = 0; si < sizes.length; si++){ const size = sizes[si], peakId = peakOf[si] || null;
       const ids = s.items.slice(idx, idx + size).map(p => p.id); idx += size;
       let c = Object.entries(cp.fams).filter(([f]) => fits(f, ids.length) && !recent.includes(f));
+      if (peakId){ const pc = Object.entries(PEAK_FAMS).filter(([f]) => fits(f, ids.length) && !recent.includes(f)); if (pc.length) c = pc; }
       { const fwMax = Math.max(0, ...ids.map(id => (META.get(id) || {}).fw || 0)); // יש כאן מישהו מודגש – מעדיפים עיצוב עם תמונה ראשית גדולה
         if (fwMax) c = c.map(([f, w]) => [f, HERO_FAMS.includes(f) ? w * (1 + fwMax * .7) : w]); }
       const chapter = firstOfRun && s.scene && S.project.sceneTitles && SCENE_TITLES[s.scene];
@@ -2853,6 +2879,7 @@ function planAlbumSmart(ps, seed){
       const fam = pick ? pick.f : 'heroGrid';
       const sp = {fam, v:pick ? pick.v : 0, ids, cat:s.cat};
       if (chapter && (fam === 'cardHero' || fam === 'textMosaic')) sp.word = SCENE_TITLES[s.scene];
+      if (peakId) sp.hero = peakId;
       if (s.scene) sp.scene = s.scene; firstOfRun = false;
       fixFam(sp, spreads.length); spreads.push(sp);
       recent.push(sp.fam); if (recent.length > 2) recent.shift();
