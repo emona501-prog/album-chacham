@@ -413,6 +413,7 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
 .alb>button:first-child{flex:1;text-align:right;padding:11px 12px;border-radius:14px;background:#F4EEE4;display:flex;flex-direction:column;gap:2px;min-width:0}
 .alb.on>button:first-child{background:#FFF1E3;box-shadow:0 0 0 2px var(--accent) inset}
 .alb small{color:var(--muted);font-size:12px}.alb-del{padding:0 12px;border-radius:14px;background:#F4EEE4}
+.alb-bk{padding:0 12px;border-radius:14px;background:#F4EEE4}
 .help-modal{max-height:86vh;overflow-y:auto}
 .help-list{display:flex;flex-direction:column;gap:10px;margin:8px 0 14px}
 .help-list b{font-size:14.5px}.help-list p{margin:2px 0 0;font-size:13.5px;color:var(--muted);line-height:1.5}
@@ -1374,7 +1375,7 @@ function pickBest(ids, target, n = 1){
   const sc = id => { const m = META.get(id) || {width:1, height:1};
     const face = Math.min(1, ((m.faces || []).reduce((a, f) => Math.max(a, f.w), 0)) * 5); // פנים גדולות = תמונה ראשית טובה
     const sharp = m.sharp ? Math.min(1, m.sharp / 900) : .5;
-    return Math.abs(Math.log(asp(id) / target)) - Math.min(.25, (m.width * m.height) / 4e8) - .35*face - .2*sharp + (m.cat === 'detail' ? .2 : 0) - (m.star ? .45 : 0) - (m.fw || 0) * .55; };
+    return Math.abs(Math.log(asp(id) / target)) - Math.min(.25, (m.width * m.height) / 4e8) - .35*face - .2*sharp + (m.cat === 'detail' ? .2 : 0) - (m.star ? .45 : 0) - (m.fw || 0) * .55 + (isBlink(m) ? .5 : 0); };
   const sorted = ids.slice().sort((a, b) => sc(a) - sc(b)).slice(0, n);
   return sorted.concat(ids.filter(i => !sorted.includes(i)));
 }
@@ -2765,7 +2766,7 @@ function computeSelection(){
   // קבוצות כמעט-זהות: משאירים את הטובה ביותר
   const t = p => p.taken || p.lastModified;
   const sorted = ps.slice().sort((a, b) => t(a) - t(b));
-  const quality = p => (p.sharp || 0) * (1 + Math.min(1, ((p.faces || [])[0] || {w:0}).w * 5));
+  const quality = p => (p.sharp || 0) * (1 + Math.min(1, ((p.faces || [])[0] || {w:0}).w * 5)) * (isBlink(p) ? .45 : 1); // בין שתי תמונות דומות – זו עם העיניים הפתוחות
   for (let i = 0; i < sorted.length; i++){
     const a = sorted[i]; if (!a.hash || a.why === 'dup') continue;
     for (let j = i + 1; j < sorted.length && j < i + 12; j++){
@@ -2870,6 +2871,7 @@ function starScore(p){
   if (nStars){ s += p.star ? 3 + p.starW * 6 : -2;
     if (nStars >= 2 && p.star >= 2) s += 2; // חתונה: שניהם יחד
     if (p.star && F.length <= nStars + 1) s += .8; }
+  if (isBlink(p)) s -= (p.faces || []).some(f => f.st && f.ear != null && f.ear < .165) ? 3.5 : 1.6; // מישהו ממצמץ – לא לפתיחה ולא לכריכה
   if (p.fw) s += p.fw * (nStars ? .5 : 1.3); // מי שביקשו להדגיש – מועמד חזק לפתיחה ולכריכה
   { const ff = faceFocus(p); if (ff && ff.box[2] - ff.box[0] > .7) s -= 1.2; } // פנים פרושות על כל הרוחב – לא יתאימו לחלון ראשי
   return s;
@@ -4242,7 +4244,14 @@ function albumTitle(){
 function eventWord(){ const ev = EVENTS[S.project.event]; return ev ? ev.word : 'מזל טוב'; }
 
 /* ---------- מנועים ---------- */
-const PPL_VER = 1;
+const PPL_VER = 2; // 2: + זיהוי עיניים עצומות
+/* עיניים עצומות: יחס גובה/רוחב של העין מנקודות הפנים (EAR). פתוחה ~0.25–0.35, עצומה < ~0.17 */
+function eyeRatio(pts){
+  const d = (a, b) => Math.hypot(pts[a].x - pts[b].x, pts[a].y - pts[b].y);
+  const e = (o) => (d(o + 1, o + 5) + d(o + 2, o + 4)) / (2 * d(o, o + 3) || 1);
+  return Math.round((e(36) + e(42)) / 2 * 1000) / 1000;
+}
+const isBlink = p => (p.faces || []).some(f => f.ear != null && f.ear < .165 && f.w >= .04 && f.v === 1);
 const FA_BASE = () => window.FA_BASE || 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.15/';
 const EMB_MODEL = () => window.EMB_MODEL || 'https://storage.googleapis.com/mediapipe-models/image_embedder/mobilenet_v3_small/float32/1/mobilenet_v3_small.tflite';
 const PPL = {active:false, fa:null, faFailed:false, emb:null, embFailed:false, done:0, total:0, clusters:null};
@@ -4328,7 +4337,7 @@ async function startPeople(){
           const c = cropFace(bmp, f);
           let r = null; try{ r = await fa.detectSingleFace(c, opt).withFaceLandmarks(true).withFaceDescriptor().withAgeAndGender(); }catch(_){}
           f.v = r ? 1 : 0;
-          if (r){ f.d = q8(Array.from(r.descriptor)); f.age = Math.round(r.age * 10) / 10; f.g = +(r.gender === 'male' ? r.genderProbability : 1 - r.genderProbability).toFixed(2); }
+          if (r){ f.d = q8(Array.from(r.descriptor)); f.age = Math.round(r.age * 10) / 10; try{ f.ear = eyeRatio(r.landmarks.positions); }catch(_){} f.g = +(r.gender === 'male' ? r.genderProbability : 1 - r.genderProbability).toFixed(2); }
           Object.assign(f, torsoStats(bmp, f));
           c.width = c.height = 1;
         }
@@ -4341,6 +4350,7 @@ async function startPeople(){
     await new Promise(r => setTimeout(r, 0));
   }
   PPL.active = false; wakeOff(); pplProgress();
+  if (!PV.plan){ computeSelection(); if (typeof scheduleGrid === 'function') scheduleGrid(); } // כפילויות: עכשיו כשידוע מי ממצמץ
   clusterPeople(); setTimeout(startScenes, 200);
   if (PV.active) PV.plan && maybeAskStar();
 }
@@ -5452,12 +5462,16 @@ async function openAlbums(){
     const nm = p => p.name || (EVENTS[p.event] && p.heroName ? EVENTS[p.event].title(p.heroName) : EVENTS[p.event] ? EVENTS[p.event].n : 'אלבום ללא שם');
     s.querySelector('.modal').innerHTML = `<h3>האלבומים שלי</h3>
       <p>כל האלבומים נשמרים בטלפון הזה בלבד. אפשר לעבוד על כמה אלבומים ולחזור לכל אחד מתי שרוצים.</p>
-      <div class="alb-list">${projs.map((p, i) => `<div class="alb ${p.id === cur ? 'on' : ''}"><button data-open="${p.id}"><b>${nm(p)}</b><small>${sizeText(sizeById(p.sizeId))} · ${counts[i]} תמונות · ${new Date(p.updatedAt || p.createdAt).toLocaleDateString('he-IL')}${p.id === cur ? ' · פתוח עכשיו' : ''}</small></button><button class="alb-del" data-del="${p.id}" aria-label="מחיקה">🗑</button></div>`).join('') || '<p class="note">אין עדיין אלבומים שמורים.</p>'}</div>
-      <div class="acts" style="margin-top:14px"><button class="btn ghost" data-a="x">סגירה</button><button class="btn" data-a="new">+ אלבום חדש</button></div>`;
+      <div class="alb-list">${projs.map((p, i) => `<div class="alb ${p.id === cur ? 'on' : ''}"><button data-open="${p.id}"><b>${nm(p)}</b><small>${sizeText(sizeById(p.sizeId))} · ${counts[i]} תמונות · ${new Date(p.updatedAt || p.createdAt).toLocaleDateString('he-IL')}${p.id === cur ? ' · פתוח עכשיו' : ''}</small></button><button class="alb-del" data-del="${p.id}" aria-label="מחיקה">🗑</button><button class="alb-bk" data-bk="${p.id}" aria-label="גיבוי">💾</button></div>`).join('') || '<p class="note">אין עדיין אלבומים שמורים.</p>'}</div>
+      <div class="acts" style="margin-top:14px"><button class="btn ghost" data-a="x">סגירה</button><button class="btn" data-a="new">+ אלבום חדש</button></div>
+      <div class="acts" style="margin-top:8px"><button class="btn ghost" data-a="restore">📂 שחזור מגיבוי</button></div>
+      <p style="font-size:12px;margin-top:8px">💾 = גיבוי האלבום לקובץ אחד – כדי לא לאבד אותו אם מנקים את הדפדפן או מחליפים טלפון.</p>`;
   };
   await draw();
   s.onclick = async e => {
-    const o = e.target.closest('[data-open]'), d = e.target.closest('[data-del]'), a = e.target.closest('[data-a]');
+    const o = e.target.closest('[data-open]'), d = e.target.closest('[data-del]'), a = e.target.closest('[data-a]'), bk = e.target.closest('[data-bk]');
+    if (bk){ s.remove(); toast('מכין גיבוי…', 2000); await backupButton(bk.dataset.bk); return; }
+    if (a && a.dataset.a === 'restore'){ s.remove(); restorePicker(); return; }
     if (d){ const pid = d.dataset.del; if (!(await confirmBox('למחוק את האלבום?', 'האלבום וכל התמונות שלו יימחקו מהטלפון. לא ניתן לבטל.', 'מחיקה', true))) return;
       await deleteProjectData(pid); if (S.project && S.project.id === pid){ await DB.tx(['meta'], 'readwrite', t => t.objectStore('meta').delete('current')); location.reload(); return; } draw(); return; }
     if (o){ if (S.project && o.dataset.open === S.project.id){ s.remove(); return; } await DB.put('meta', o.dataset.open, 'current'); location.reload(); return; }
@@ -6518,6 +6532,7 @@ function preflightSpread(sp, no){
       if (iw <= 0 || ih <= 0) continue;
       const cr = coverRect(m.width, m.height, iw / ih, it.fx, it.fy, it.zoom), dpi = Math.round(cr.sw / (iw / 25.4));
       if (dpi < 150) add('err', `תמונה מוגדלת מדי (${dpi}dpi) – תצא מטושטשת`);
+      if (isBlink(m) && it.w * it.h > G.W * G.H * .2) add('warn', 'עיניים עצומות בתמונה גדולה – אולי להחליף');
       else if (dpi < 200) add('warn', `תמונה על גבול האיכות (${dpi}dpi)`);
       if (typeof headBoxes === 'function' && !it.soft){
         const H = headBoxes(m);
@@ -6562,6 +6577,86 @@ function preflightDialog(issues){
     };
     document.body.appendChild(s);
   });
+}
+
+/* ---------- גיבוי ושחזור אלבום: קובץ אחד עם הכל (תמונות מקוריות, עיצוב, אלמנטים ורקעים אישיים) ---------- */
+const BK_VER = 1;
+async function idxAll(store, pid){ return DB.tx([store], 'readonly', t => DB.req(t.objectStore(store).index('project').getAll(pid))); }
+async function backupProject(pid){
+  const proj = await DB.get('projects', pid); if (!proj) throw new Error('no project');
+  const photos = await idxAll('photos', pid), pages = await idxAll('pages', pid);
+  const files = [], json = s => new Blob([JSON.stringify(s)], {type:'application/json'});
+  // אלמנטים ורקעים אישיים שבשימוש באלבום
+  const txt = JSON.stringify(pages), uEls = [...new Set(txt.match(/u:[A-Za-z0-9_-]+/g) || [])], uBgs = [...new Set((txt.match(/"uid":"([^"]+)"/g) || []).map(x => x.slice(7, -1)))];
+  const myEls = ((await DB.get('meta', 'myEls').catch(() => null)) || {}).list || [], myBgs = ((await DB.get('meta', 'myBgs').catch(() => null)) || {}).list || [];
+  const man = {app:'hai-album', v:BK_VER, at:Date.now(), project:proj, photos, pages, myEls:myEls.filter(e => uEls.includes(e.id)), myBgs:myBgs.filter(b => uBgs.includes(b.uid))};
+  man.types = {}; let n = 0;
+  for (const p of photos){
+    for (const [st, pre] of [['originals', 'o'], ['previews', 'p'], ['thumbs', 't']]){ const b = await DB.get(st, p.id).catch(() => null); if (b){ files.push({name:`${pre}/${p.id}`, blob:b}); if (pre === 'o') man.types[p.id] = b.type; } }
+    if (++n % 10 === 0) toast(`מכין גיבוי… ${n}/${photos.length}`, 1500);
+  }
+  for (const e of man.myEls){ const b = await DB.get('meta', 'el:' + e.id).catch(() => null); if (b) files.push({name:`e/${e.id}`, blob:b}); }
+  for (const g of man.myBgs){ const b = await DB.get('meta', 'bgimg:' + g.uid).catch(() => null); if (b) files.push({name:`b/${g.uid}`, blob:b}); }
+  files.unshift({name:'album.json', blob:json(man)});
+  const nm = (proj.name || (EVENTS[proj.event] && proj.heroName ? EVENTS[proj.event].title(proj.heroName) : 'אלבום')).replace(/[\\/:*?"<>|]/g, '').trim() || 'אלבום';
+  return new File([await buildZip(files)], `גיבוי-${nm}-${new Date().toISOString().slice(0, 10)}.albumzip`, {type:'application/zip'});
+}
+/* קורא ZIP ששמור בלי דחיסה (כמו שהאפליקציה יוצרת) – בלי לטעון את כל הקובץ לזיכרון */
+async function readZip(file){
+  const tailLen = Math.min(file.size, 65557), tail = new DataView(await file.slice(file.size - tailLen).arrayBuffer());
+  let eo = -1; for (let i = tailLen - 22; i >= 0; i--) if (tail.getUint32(i, true) === 0x06054b50){ eo = i; break; }
+  if (eo < 0) throw new Error('zip');
+  const cnt = tail.getUint16(eo + 10, true), cdSize = tail.getUint32(eo + 12, true), cdOff = tail.getUint32(eo + 16, true);
+  const cd = new DataView(await file.slice(cdOff, cdOff + cdSize).arrayBuffer()), dec = new TextDecoder(), out = new Map();
+  let p = 0;
+  for (let i = 0; i < cnt; i++){
+    const method = cd.getUint16(p + 10, true), size = cd.getUint32(p + 20, true), nl = cd.getUint16(p + 28, true), xl = cd.getUint16(p + 30, true), cl = cd.getUint16(p + 32, true), lo = cd.getUint32(p + 42, true);
+    const name = dec.decode(new Uint8Array(cd.buffer, cd.byteOffset + p + 46, nl)); p += 46 + nl + xl + cl;
+    if (method !== 0) throw new Error('compressed');
+    const lh = new DataView(await file.slice(lo, lo + 30).arrayBuffer()), start = lo + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+    out.set(name, file.slice(start, start + size));
+  }
+  return out;
+}
+async function restoreBackup(file){
+  let z; try{ z = await readZip(file); }catch(_){ toast('הקובץ הזה הוא לא גיבוי של אלבום חכם', 4000); return; }
+  const mj = z.get('album.json'); if (!mj){ toast('הקובץ הזה הוא לא גיבוי של אלבום חכם', 4000); return; }
+  const man = JSON.parse(await mj.text()); if (man.app !== 'hai-album'){ toast('הקובץ הזה הוא לא גיבוי של אלבום חכם', 4000); return; }
+  const pid = man.project.id, exists = await DB.get('projects', pid).catch(() => null);
+  if (exists && !(await confirmBox('האלבום כבר קיים בטלפון', 'לשחזר מהגיבוי ולהחליף את הגרסה שבטלפון?', 'החלפה'))) return;
+  if (exists) await deleteProjectData(pid);
+  let n = 0;
+  for (const p of man.photos){
+    for (const [st, pre] of [['originals', 'o'], ['previews', 'p'], ['thumbs', 't']]){ const b = z.get(`${pre}/${p.id}`); if (b) await DB.put(st, new Blob([b], {type:pre === 'o' ? ((man.types || {})[p.id] || 'image/jpeg') : 'image/jpeg'}), p.id); }
+    await DB.put('photos', p);
+    if (++n % 10 === 0) toast(`משחזר… ${n}/${man.photos.length}`, 1500);
+  }
+  for (const pg of man.pages) await DB.put('pages', pg);
+  if ((man.myEls || []).length){ const m = ((await DB.get('meta', 'myEls').catch(() => null)) || {}).list || [];
+    for (const e of man.myEls){ const b = z.get(`e/${e.id}`); if (b) await DB.put('meta', new Blob([b], {type:'image/png'}), 'el:' + e.id); if (!m.some(x => x.id === e.id)) m.push(e); }
+    await DB.put('meta', {list:m}, 'myEls'); }
+  if ((man.myBgs || []).length){ const m = ((await DB.get('meta', 'myBgs').catch(() => null)) || {}).list || [];
+    for (const g of man.myBgs){ const b = z.get(`b/${g.uid}`); if (b) await DB.put('meta', new Blob([b], {type:'image/jpeg'}), 'bgimg:' + g.uid); if (!m.some(x => x.uid === g.uid)) m.push(g); }
+    await DB.put('meta', {list:m}, 'myBgs'); }
+  await DB.put('projects', man.project); await DB.put('meta', pid, 'current');
+  toast('האלבום שוחזר ✓', 2500); setTimeout(() => location.reload(), 900);
+}
+async function backupButton(pid){
+  try{
+    const f = await backupProject(pid);
+    const s = modalBox(`<h3>הגיבוי מוכן ✓</h3><p>קובץ אחד (${fmtBytes(f.size)}) עם כל התמונות המקוריות והעיצוב. שמרו אותו בדרייב, בוואטסאפ לעצמכם או במחשב – ואפשר לשחזר ממנו בכל טלפון דרך "האלבומים שלי" ← "שחזור מגיבוי".</p>
+      <div class="acts col"><button class="btn accent" data-a="share">שיתוף / שליחה</button><button class="btn ghost" data-a="dl">שמירה למכשיר</button><button class="btn ghost" data-a="x" style="box-shadow:none;background:none;color:var(--muted)">סגירה</button></div>`);
+    if (!(navigator.canShare && navigator.canShare({files:[f]}))) s.querySelector('[data-a="share"]').remove();
+    s.onclick = async e => { const a = e.target.closest('[data-a]'); if (!a){ if (e.target === s) s.remove(); return; }
+      if (a.dataset.a === 'x') s.remove();
+      if (a.dataset.a === 'dl'){ const u = URL.createObjectURL(f), l = document.createElement('a'); l.href = u; l.download = f.name; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 6e4); }
+      if (a.dataset.a === 'share'){ try{ await navigator.share({files:[f], title:f.name}); }catch(_){} } };
+    window.__lastBackup = f;
+  }catch(e){ console.error(e); toast('הגיבוי נכשל: ' + (e && e.message || e), 4000); }
+}
+function restorePicker(){
+  const i = document.createElement('input'); i.type = 'file'; i.accept = '.albumzip,.zip,application/zip';
+  i.onchange = () => { if (i.files[0]) restoreBackup(i.files[0]); }; i.click();
 }
 
 /* =========================================================
