@@ -3776,7 +3776,12 @@ function printCfg(){ return Object.assign({bleed:3, marks:true, format:'pdf', bi
 /* הגדרות מוכנות לפי דרישות כל מעבדה */
 const LABS = {
   gen:       {n:'כללי', set:{bleed:3, marks:true, format:'pdf', pages:'spreads', safe:5}},
-  laserlink: {n:'לייזרלינק', spreads:[10, 60], set:{bleed:0, marks:false, format:'jpg', pages:'spreads', safe:10}, note:'לפי דרישות לייזרלינק: כפולות JPG ממוספרות 01, 02…, ‏300dpi‏, sRGB, בגודל האלבום הפתוח בדיוק. 1 ס״מ מכל קצה עלול להיחתך – הבדיקה לפני דפוס מתריעה על ראשים וטקסט באזור הזה.'},
+  laserlink: {n:'לייזרלינק', spreads:[10, 60],
+    // מתבנית "כריכת ספר" של לייזרלינק (PSD ‏30-80): גיליון 90×36 ס״מ, לוח 40.6×30.97 ס״מ מקצה השדרה (כולל 2.6 ס״מ ציר)
+    cover:{ls40:{W:900, H:360, panelW:406, panelH:309.7, hinge:26}},
+    // עובי שדרה (מ״מ) לפי מספר הדפים (דף = כפולה), מהטבלה של לייזרלינק
+    spine:n => n <= 15 ? (n <= 13 ? 15 : 20) : n <= 19 ? 15 : n <= 25 ? 20 : n <= 31 ? 25 : n <= 37 ? 30 : n <= 43 ? 35 : n <= 50 ? 40 : n <= 52 ? 25 : 30,
+    paper:n => n <= 15 ? 'דפים עבים מאוד' : n > 50 ? 'דפים דקים' : 'דפים רגילים', set:{bleed:0, marks:false, format:'jpg', pages:'spreads', safe:10}, note:'לפי דרישות לייזרלינק: כפולות JPG ממוספרות 01, 02…, ‏300dpi‏, sRGB, בגודל האלבום הפתוח בדיוק. 1 ס״מ מכל קצה עלול להיחתך – הבדיקה לפני דפוס מתריעה על ראשים וטקסט באזור הזה.'},
   dprint:    {n:'דיפרינט', set:{bleed:3, marks:false, format:'pdf', pages:'single', safe:5}, note:'לפי דרישות דיפרינט: PDF של עמודים בודדים, sRGB.'}
 };
 /* חיתוך כפולה לשני עמודים בודדים – כל עמוד עם גלישה מכל הצדדים (בצד הקיפול הגלישה היא המשך התמונה מהעמוד השני) */
@@ -3802,6 +3807,13 @@ function coverGeo(){
   const n = PV.plan ? PV.plan.spreads.length : 20, spine = c.spine || autoSpine(n);
   const base = {cover:true, type:c.type, T, s:Math.min(sz.w, sz.h)/300, spine, dir:c.dir};
   base.m = T.margin * Math.max(.55, base.s); base.g = T.gutter * Math.max(.6, base.s);
+  { const lab = LABS[printCfg().lab], lc = lab && lab.cover && c.type === 'photo' && lab.cover[sz.id];
+    if (lc){ // תבנית כריכה של המעבדה: גיליון בגודל קבוע, שדרה לפי מספר הכפולות, הלוחות במרכז
+      const sp2 = c.spine || lab.spine(n), W = lc.W, H = lc.H, pw = lc.panelW, ph = lc.panelH, wrap = (W - 2*pw - sp2) / 2, top = (H - ph) / 2, spX = wrap + pw;
+      const frontLeft = c.dir === 'rtl', frontX = frontLeft ? wrap : spX + sp2, backX = frontLeft ? spX + sp2 : wrap;
+      return Object.assign(base, {spine:sp2, W, H, B:0, pw:spX + sp2/2, wrap, wrapY:top, panelW:pw, panelH:ph, spineX:spX, frontX, backX, top,
+        hinge:lc.hinge, foldXs:[spX, spX + sp2], boardXs:[wrap, W - wrap], foldYs:[top, H - top], lab:lab.n});
+    } }
   if (t.printed){
     const hard = c.type === 'photo', board = hard ? 3 : 0, wrap = hard ? (c.wrap || 15) : 0;
     const pw = sz.w + board, ph = sz.h + board*2, spX = wrap + pw;
@@ -3955,7 +3967,7 @@ function drawCoverGuides(ctx, G, X, Y, k, dpr){
   const cw = ctx.canvas.width, ch = ctx.canvas.height;
   ctx.save();
   if (G.wrap){ ctx.fillStyle = 'rgba(179,38,30,.18)';
-    ctx.fillRect(0, 0, cw, Y(G.wrap)); ctx.fillRect(0, Y(G.H - G.wrap), cw, ch); ctx.fillRect(0, 0, X(G.wrap), ch); ctx.fillRect(X(G.W - G.wrap), 0, cw, ch); }
+    ctx.fillRect(0, 0, cw, Y(G.wrapY != null ? G.wrapY : G.wrap)); ctx.fillRect(0, Y(G.H - (G.wrapY != null ? G.wrapY : G.wrap)), cw, ch); ctx.fillRect(0, 0, X(G.wrap), ch); ctx.fillRect(X(G.W - G.wrap), 0, cw, ch); }
   ctx.fillStyle = 'rgba(46,125,215,.13)'; ctx.fillRect(X(G.spineX - G.hinge), 0, (G.spine + 2*G.hinge) * k, ch);
   ctx.setLineDash([5*dpr, 4*dpr]); ctx.lineWidth = 1.2*dpr; ctx.strokeStyle = 'rgba(46,125,215,.9)';
   G.foldXs.forEach(f => { ctx.beginPath(); ctx.moveTo(X(f), 0); ctx.lineTo(X(f), ch); ctx.stroke(); });
@@ -4114,7 +4126,8 @@ function orderSpec(){
   ];
   if (t.printed){
     lines.push(`קובץ כריכה פרוש (גב + שדרה + חזית): ${CG.W.toFixed(1)}×${CG.H.toFixed(1)} מ״מ`);
-    lines.push(`רוחב שדרה: ${CG.spine} מ״מ${c.spine ? '' : ' (הערכה אוטומטית – נא לאשר מול בית הדפוס)'}`);
+    lines.push(`רוחב שדרה: ${CG.spine} מ״מ${c.spine ? '' : CG.lab ? ` (לפי טבלת ${CG.lab})` : ' (הערכה אוטומטית – נא לאשר מול בית הדפוס)'}`);
+    { const lb = LABS[pc.lab]; if (lb && lb.paper) lines.push(`מעבדה: ${lb.n}  ·  ${n} דפים (כפולות)  ·  להזמין: ${lb.paper(n)}  ·  שדרה ${lb.spine(n) / 10} ס״מ`); }
     if (CG.wrap) lines.push(`שוליים לעטיפה: ${CG.wrap} מ״מ מכל צד  ·  לוח קרטון: ${CG.panelW.toFixed(1)}×${CG.panelH.toFixed(1)} מ״מ`);
     else lines.push(`גלישה בכריכה: ${CG.B} מ״מ`);
   }
@@ -4266,10 +4279,10 @@ function layoutCover(sp){
     if (c.W !== G.W || c.H !== G.H){
       const o = c.geo;
       if (o && o.type === G.type && Math.abs(o.panelW - G.panelW) < .01 && Math.abs(o.panelH - G.panelH) < .01){ // רק השדרה/העטיפה השתנו – מזיזים, לא מעוותים
-        const dW = G.wrap - o.wrap, oc = o.spineX + o.spine/2, nc = G.spineX + G.spine/2;
+        const dW = G.wrap - o.wrap, dY = (G.wrapY != null ? G.wrapY : G.wrap) - (o.wrapY != null ? o.wrapY : o.wrap), oc = o.spineX + o.spine/2, nc = G.spineX + G.spine/2;
         items = items.map(it => { const n = Object.assign({}, it), cx = it.x + it.w/2;
           if (it.w > o.W * .9){ n.x = it.x * G.W / o.W; n.w = it.w * (G.W + 2*G.B) / (o.W + 2*o.B); n.h = it.h * (G.H + 2*G.B) / (o.H + 2*o.B); n.y = it.y * G.H / o.H; return n; }
-          n.y = it.y + dW;
+          n.y = it.y + dY;
           if (cx < o.spineX) n.x = it.x + dW; else if (cx > o.spineX + o.spine) n.x = it.x + (G.W - o.W) - dW; else n.x = it.x + nc - oc;
           if (it.t === 'rect' && it.h > o.H * .9){ n.h = G.H + 2*G.B; n.y = -G.B; }
           if (it.t === 'rect' && Math.abs(it.w - o.spine) < .5){ n.w = G.spine; n.x = G.spineX; }
@@ -4286,7 +4299,7 @@ function layoutCover(sp){
   if (typeof applyFaces === 'function') applyFaces(L);
   return L;
 }
-function coverGeoSnap(G){ return {type:G.type, W:G.W, H:G.H, B:G.B, wrap:G.wrap, spine:G.spine, spineX:G.spineX, panelW:G.panelW, panelH:G.panelH}; }
+function coverGeoSnap(G){ return {type:G.type, W:G.W, H:G.H, B:G.B, wrap:G.wrap, wrapY:G.wrapY, spine:G.spine, spineX:G.spineX, panelW:G.panelW, panelH:G.panelH}; }
 function coverSummary(){ const c = coverCfg(), t = COVER_TYPES[c.type]; return t.n + (t.printed ? ` · שדרה ${c.spine || autoSpine(PV.plan ? PV.plan.spreads.length : 20)} מ״מ` : c.deboss ? ` · "${c.deboss}"` : ''); }
 $('coverBtn').onclick = openCover;
 
