@@ -2503,6 +2503,7 @@ async function buildPDF(pages, G, title, opt = {}){
     obj(N.po, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${f(mW)} ${f(mH)}] /BleedBox [${f(bx0)} ${f(by0)} ${f(bx1)} ${f(by1)}] /TrimBox [${f(tx0)} ${f(ty0)} ${f(tx1)} ${f(ty1)}] /Resources << /XObject << ${N.im.map((o, j) => `/Im${j + 1} ${o} 0 R`).join(' ')} >> /Font << /F1 3 0 R >> >> /Contents ${N.co} 0 R >>`);
     const r1 = n => Math.round(n * 10) / 10;
     const label = G.cover ? `Hai Apps Photobook  |  COVER ${G.type}  |  flat ${r1(G.W)}x${r1(G.H)} mm  |  spine ${G.spine} mm  |  wrap ${G.wrap || 0} mm  |  bleed ${B} mm  |  ${DPI} dpi  |  sRGB`
+      : pg.pn ? `Hai Apps Photobook  |  page ${pg.pn} (spread ${pg.no} ${pg.side === 'R' ? 'right' : 'left'})  |  trim ${G.W}x${G.H} mm  |  bleed ${B} mm  |  ${DPI} dpi  |  sRGB`
       : `Hai Apps Photobook  |  spread ${pg.no}  |  trim ${G.W}x${G.H} mm (2 x ${G.pw}x${G.H})  |  bleed ${B} mm  |  ${DPI} dpi  |  sRGB`;
     const draws = pg.strips.map((st, j) => { const hpt = st.h / pg.H * ph, ypt = by1 - (st.y + st.h) / pg.H * ph; return `q ${f(bx1 - bx0)} 0 0 ${f(hpt)} ${f(bx0)} ${f(ypt)} cm /Im${j + 1} Do Q\n`; }).join('');
     const content = draws + (withMarks ? `q 0 0 0 RG 0.25 w\n${marks}Q\nBT /F1 6 Tf 0 0 0 rg ${f(tx0)} ${f(Math.max(4, by0 - 7*pt))} Td (${label}) Tj ET\n` : '');
@@ -3767,7 +3768,20 @@ const MATERIALS = [
 ];
 const DEBOSS = {gold:{n:'זהב', c:'#D4AF63'}, silver:{n:'כסף', c:'#D5D7DA'}, blind:{n:'עיוורת (בלי צבע)', c:null}};
 
-function printCfg(){ return Object.assign({bleed:3, marks:true, format:'pdf', binding:'layflat', safe:5}, S.project.print || {}); }
+function printCfg(){ return Object.assign({bleed:3, marks:true, format:'pdf', binding:'layflat', safe:5, pages:'spreads'}, S.project.print || {}); }
+/* חיתוך כפולה לשני עמודים בודדים – כל עמוד עם גלישה מכל הצדדים (בצד הקיפול הגלישה היא המשך התמונה מהעמוד השני) */
+async function splitSpread(pg){
+  const G = pg.G, k = pg.W / (G.W + 2*G.B), pw = Math.round((G.pw + 2*G.B) * k), xs = [0, Math.round(G.pw * k)];
+  const out = [];
+  for (const x0 of xs){
+    const strips = [];
+    for (const st of pg.strips){ const bm = await createImageBitmap(st.jpeg), c = document.createElement('canvas'); c.width = pw; c.height = st.h;
+      c.getContext('2d', {alpha:false}).drawImage(bm, -x0, 0); bm.close();
+      strips.push({y:st.y, h:st.h, jpeg:await new Promise(r => c.toBlob(r, 'image/jpeg', .95))}); c.width = c.height = 1; }
+    out.push({strips, W:pw, H:pg.H, no:pg.no, side:x0 ? 'R' : 'L', G:Object.assign({}, G, {W:G.pw, foldXs:[], boardXs:[]})});
+  }
+  return (typeof isLTR === 'function' && isLTR()) ? out : out.reverse(); // בעברית: העמוד הימני קודם
+}
 function coverCfg(){ return Object.assign({type:'photo', spine:0, wrap:15, dir:'rtl', material:'#1E1B19', deboss:'', debossColor:'gold'}, S.project.cover || {}); }
 function saveCoverCfg(patch){ S.project.cover = Object.assign(coverCfg(), patch); touchProject(); }
 /* עובי שדרה משוער לאלבום פתיחה-שטוחה: כ-1 מ"מ לכל כפולה + 2 קרטוני כריכה. בית הדפוס נותן את המספר המדויק */
@@ -4114,6 +4128,7 @@ function exportChooser(){
         <div class="sec-title" style="margin:16px 0 6px">הגדרות דפוס</div>
         <div class="ctrl ex-set">
           <div class="ctrl-row"><span>סוג קובץ</span>${seg('format', [['pdf', 'PDF'], ['jpg', 'JPG']])}</div>
+          <div class="ctrl-row"><span>מבנה הקובץ${pc.pages === 'single' ? '<br><small style="color:var(--muted)">כל כפולה = 2 עמודים בקובץ</small>' : ''}</span>${seg('pages', [['spreads', 'כפולות'], ['single', 'עמודים בודדים']])}</div>
           <div class="ctrl-row"><span>גלישה</span>${seg('bleed', [[3, '3 מ״מ'], [5, '5 מ״מ']])}</div>
           <div class="ctrl-row"><span>סימני חיתוך${pc.format === 'jpg' ? '<br><small style="color:var(--muted)">רק ב-PDF</small>' : ''}</span>${seg('marks', [[true, 'כן'], [false, 'לא']])}</div>
           <div class="ctrl-row"><span>כריכה פנימית</span>${seg('binding', [['layflat', 'פתיחה שטוחה'], ['regular', 'רגילה']])}</div>
@@ -4176,7 +4191,13 @@ async function exportFlow(pre){
       if (pc.format === 'pdf') files.push({name:'00_cover.pdf', blob:await buildPDF([coverPage], coverPage.G, (S.project.name || 'Photobook') + ' cover', opt)});
       else { const one = await stripsToJpeg(coverPage); if (one) files.push({name:'00_cover.jpg', blob:await jpegWithDpi(one)}); else coverPage.strips.forEach((st, i) => files.push({name:`00_cover_part${i + 1}.jpg`, blob:st.jpeg})); }
     }
-    if (pages.length){
+    if (pages.length && pc.pages === 'single'){ // מעבדות כמו דיפרינט מבקשות עמודים בודדים
+      stepEl().textContent = 'מחלק לעמודים בודדים'; const sp = []; for (const p of pages) sp.push(...await splitSpread(p));
+      let pn = 0; sp.forEach(p => { p.pn = ++pn; });
+      if (pc.format === 'pdf') files.push({name:choice === 'one' ? `pages_spread_${pad(pages[0].no)}.pdf` : `pages_${pad(1)}-${pad(sp.length)}.pdf`, blob:await buildPDF(sp, sp[0].G, S.project.name || 'Photobook', opt)});
+      else for (const p of sp){ const one = await stripsToJpeg(p); if (one) files.push({name:`page_${String(p.pn).padStart(3, '0')}.jpg`, blob:await jpegWithDpi(one)}); }
+    }
+    else if (pages.length){
       if (pc.format === 'pdf') files.push({name:choice === 'one' ? `spread_${pad(pages[0].no)}.pdf` : `spreads_${pad(1)}-${pad(pages.length)}.pdf`, blob:await buildPDF(pages, pages[0].G, S.project.name || 'Photobook', opt)});
       else for (const p of pages){ const one = await stripsToJpeg(p); if (one) files.push({name:`spread_${pad(p.no)}.jpg`, blob:await jpegWithDpi(one)}); else for (let i = 0; i < p.strips.length; i++) files.push({name:`spread_${pad(p.no)}_part${i + 1}.jpg`, blob:await jpegWithDpi(p.strips[i].jpeg)}); }
     }
