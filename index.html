@@ -309,9 +309,22 @@ h1{font-family:"Frank Ruhl Libre",serif;font-size:30px;line-height:1.2;margin:18
 .ed-tabs{display:flex;gap:6px;margin-bottom:10px}
 .ed-tabs button{padding:7px 12px;border-radius:999px;background:#EEE7DC;font-size:13px}
 .ed-tabs button.on{background:var(--ink);color:#fff}
-.ed-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;overflow:auto;min-height:0}
-.ed-th{position:relative;aspect-ratio:1;border-radius:6px;overflow:hidden;background:#E9E2D6;padding:0}
-.ed-th img{width:100%;height:100%;object-fit:cover;display:block}
+.ed-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;overflow:auto;min-height:0;align-content:start;grid-auto-rows:max-content}
+.ed-th{position:relative;border-radius:6px;overflow:hidden;background:#E9E2D6;padding:0;display:block;width:100%}
+.ed-th::before{content:'';display:block;padding-top:100%} /* ריבוע קבוע – בלי שהתמונות יימעכו זו על זו */
+.ed-th img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.pk-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.pk-head h3{margin:0}
+.pk-gal{padding:9px 14px;border-radius:999px;background:var(--accent);color:#fff;font-weight:700;font-size:14px;white-space:nowrap}
+.pk-crumb{display:flex;align-items:center;gap:10px;padding:2px 2px 8px}.pk-crumb button{color:var(--accent);font-weight:700;font-size:14px}.pk-crumb b{font-size:14px}
+.ed-grid.pk-dirs{grid-template-columns:repeat(2,1fr);gap:18px 14px;padding:14px 6px 10px}
+.pk-dir{display:flex;flex-direction:column;align-items:center;gap:3px;padding:0;background:none;text-align:center}
+.pk-dir b{font-size:14px;margin-top:6px}.pk-dir small{font-size:11.5px;color:var(--muted)}
+.pk-stack{position:relative;width:100%;aspect-ratio:1.15;perspective:600px}
+.pk-stack i{position:absolute;inset:6% 10%;border-radius:10px;overflow:hidden;background:#E9E2D6;border:3px solid #fff;box-shadow:0 6px 16px rgba(40,25,10,.25);
+  transform:rotateX(14deg) rotateZ(calc((var(--k) - 1) * 7deg)) translateY(calc(var(--k) * -4px));transition:transform .35s}
+.pk-stack i:nth-child(1){--k:0;z-index:1}.pk-stack i:nth-child(2){z-index:2}.pk-stack i:nth-child(3){z-index:3}
+.pk-dir:active .pk-stack i{transform:rotateX(0) rotateZ(calc((var(--k) - 1) * 14deg)) translateY(-8px)}
+.pk-stack img{width:100%;height:100%;object-fit:cover;display:block}
 .ed-th span{position:absolute;bottom:3px;right:3px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;padding:2px 5px;border-radius:5px}
 .ed-th.cur{outline:3px solid var(--accent);outline-offset:-3px}
 
@@ -3714,31 +3727,53 @@ function edEditText(){
   };
 }
 /* בוחר תמונות: כל תמונות הפרויקט, עם סימון איפה כל אחת נמצאת */
-function pickPhoto(title, cb, currentId){
+function pickPhoto(title, cb, currentId, startTab){
   const where = new Map();
   PV.plan.spreads.forEach((sp, i) => sp.ids.forEach(id => where.set(id, i)));
   const ps = S.photos.slice().sort((a, b) => (a.taken || a.lastModified) - (b.taken || b.lastModified));
   const unused = ps.filter(p => !where.has(p.id)).length;
+  // תיקיות: לפי רגעים באירוע (זמן ומקום), כמו בגלריה
+  const folders = sessionize(ps).map((se, i) => { const t0 = se.items[0].taken || se.items[0].lastModified;
+    return {i, items:se.items, name:(sc => sc && SCENE_TITLES[sc] ? SCENE_TITLES[sc] : `רגע ${i + 1}`)(Object.entries(se.items.reduce((m, p) => { if (p.scene) m[p.scene] = (m[p.scene] || 0) + 1; return m; }, {})).filter(([, c]) => c >= se.items.length * .4).sort((x, y) => y[1] - x[1]).map(x => x[0])[0]), time:t0 ? new Date(t0).toLocaleTimeString('he-IL', {hour:'2-digit', minute:'2-digit'}) : ''}; });
   const s = document.createElement('div'); s.className = 'scrim'; s.style.zIndex = 95;
-  s.innerHTML = `<div class="sheet ed-pick"><div class="grab"></div><h3>${title}</h3>
-    <div class="ed-tabs"><button data-f="all" class="on">הכל (${ps.length})</button><button data-f="free">לא בשימוש (${unused})</button><button data-f="here">בכפולה הזו</button></div>
+  s.innerHTML = `<div class="sheet ed-pick"><div class="grab"></div><div class="pk-head"><h3>${title}</h3><button class="pk-gal" data-a="gal">📱 מהגלריה</button></div>
+    <div class="ed-tabs"><button data-f="dirs">📁 תיקיות</button><button data-f="all">הכל (${ps.length})</button><button data-f="free">לא בשימוש (${unused})</button><button data-f="here">בכפולה הזו</button></div>
+    <div class="pk-crumb hidden"><button data-a="up">‹ כל התיקיות</button><b></b></div>
     <div class="ed-grid"></div></div>`;
   document.body.appendChild(s);
-  const grid = s.querySelector('.ed-grid');
-  const render = f => {
-    grid.innerHTML = '';
-    ps.filter(p => f === 'all' || (f === 'free' ? !where.has(p.id) : where.get(p.id) === PV.cur)).forEach(p => {
-      const b = document.createElement('button'); b.className = 'ed-th' + (p.id === currentId ? ' cur' : '');
-      const w = where.has(p.id) ? (where.get(p.id) === PV.cur ? 'כאן' : 'כפולה ' + (where.get(p.id) + 1)) : '';
-      b.innerHTML = `<img alt="" loading="lazy">${w ? `<span>${w}</span>` : ''}`;
-      thumbURL(p.id).then(u => { if (u) b.querySelector('img').src = u; });
-      b.onclick = () => { s.remove(); cb(p.id); };
-      grid.appendChild(b);
-    });
-  };
-  render('all');
-  s.addEventListener('click', e => {
-    const t = e.target.closest('[data-f]'); if (t){ s.querySelectorAll('[data-f]').forEach(x => x.classList.toggle('on', x === t)); render(t.dataset.f); }
+  const grid = s.querySelector('.ed-grid'), crumb = s.querySelector('.pk-crumb');
+  const tile = p => { const b = document.createElement('button'); b.className = 'ed-th' + (p.id === currentId ? ' cur' : '');
+    const w = where.has(p.id) ? (where.get(p.id) === PV.cur ? 'כאן' : 'כפולה ' + (where.get(p.id) + 1)) : '';
+    b.innerHTML = `<img alt="" loading="lazy">${w ? `<span>${w}</span>` : ''}`;
+    thumbURL(p.id).then(u => { if (u) b.querySelector('img').src = u; });
+    b.onclick = () => { s.remove(); cb(p.id); }; return b; };
+  const list = arr => { grid.className = 'ed-grid'; grid.innerHTML = ''; arr.forEach(p => grid.appendChild(tile(p))); };
+  const dirs = () => { crumb.classList.add('hidden'); grid.className = 'ed-grid pk-dirs'; grid.innerHTML = '';
+    folders.forEach(f => { const b = document.createElement('button'); b.className = 'pk-dir';
+      const pick3 = [f.items[0], f.items[Math.floor(f.items.length / 2)], f.items[f.items.length - 1]].filter((x, i, a) => x && a.indexOf(x) === i);
+      const nFree = f.items.filter(p => !where.has(p.id)).length;
+      b.innerHTML = `<div class="pk-stack">${pick3.map((_, k) => `<i style="--k:${k}"><img alt=""></i>`).join('')}</div><b>${f.name}</b><small>${f.items.length} תמונות${nFree ? ` · ${nFree} לא בשימוש` : ''}${f.time ? ' · ' + f.time : ''}</small>`;
+      pick3.forEach((p, k) => thumbURL(p.id).then(u => { if (u) b.querySelectorAll('img')[k].src = u; }));
+      b.onclick = () => { crumb.classList.remove('hidden'); crumb.querySelector('b').textContent = `${f.name} · ${f.items.length}`; list(f.items); grid.scrollTop = 0; };
+      grid.appendChild(b); }); };
+  const render = f => { s.querySelectorAll('[data-f]').forEach(x => x.classList.toggle('on', x.dataset.f === f)); crumb.classList.add('hidden');
+    if (f === 'dirs') return dirs();
+    list(ps.filter(p => f === 'all' || (f === 'free' ? !where.has(p.id) : where.get(p.id) === PV.cur))); };
+  render(startTab || (folders.length > 1 ? 'dirs' : 'all'));
+  s.addEventListener('click', async e => {
+    const t = e.target.closest('[data-f]'); if (t) render(t.dataset.f);
+    const a = e.target.closest('[data-a]');
+    if (a && a.dataset.a === 'up') dirs();
+    if (a && a.dataset.a === 'gal'){ // תמונות חדשות ישר מהגלריה של הטלפון
+      const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*,.heic,.heif'; inp.multiple = true;
+      inp.onchange = async () => { const fs = [...inp.files]; if (!fs.length) return;
+        const before = new Set(S.photos.map(p => p.id)); s.remove(); toast('מוסיף את התמונות…', 2500); enqueue(fs);
+        while (Q.active) await new Promise(r => setTimeout(r, 300));
+        const fresh = S.photos.filter(p => !before.has(p.id)); fresh.forEach(p => META.set(p.id, p));
+        if (!fresh.length) return;
+        if (fresh.length === 1) cb(fresh[0].id);
+        else { toast(`נוספו ${fresh.length} תמונות – בחרו איזו להכניס`, 3000); pickPhoto(title, cb, currentId, 'free'); } };
+      inp.click(); }
     if (e.target === s) s.remove();
   });
 }
