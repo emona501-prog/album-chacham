@@ -1831,8 +1831,12 @@ function fullR(ctx){
   const inv = t.inverse(), P = [[0, 0], [cw, 0], [0, ch], [cw, ch]].map(([x, y]) => inv.transformPoint({x, y}));
   const xs = P.map(p => p.x), ys = P.map(p => p.y); return {x:Math.min(...xs), y:Math.min(...ys), w:Math.max(...xs) - Math.min(...xs), h:Math.max(...ys) - Math.min(...ys)};
 }
+function hexLum(c){ const m = /^#?([0-9a-f]{6})$/i.exec(String(c || '').trim()); if (!m) return .8; const n = parseInt(m[1], 16); return (.299*(n >> 16) + .587*((n >> 8) & 255) + .114*(n & 255)) / 255; }
+function bgLum(bg, G){ if (!bg) return .8; if (bg.type === 'solid') return hexLum(bg.color); if (bg.type === 'linear' || bg.type === 'radial') return (hexLum(bg.c1) + hexLum(bg.c2)) / 2;
+  return hexLum(bg.base || bg.color || (G.T && G.T.bg)); }
 function drawBg(ctx, L, k, ox, bgImg){
   const G = L.G, cw = ctx.canvas.width, ch = ctx.canvas.height, bg = L.bg, R = fullR(ctx);
+  RT.bgLum = bgLum(bg, G);
   ctx.save();
   if (bg.type === 'solid'){ ctx.fillStyle = bg.color; ctx.fillRect(R.x, R.y, R.w, R.h); }
   else if (bg.type === 'linear'){
@@ -3364,6 +3368,7 @@ function edResize(it, d, p){
   const ax = -hd.sx * s.w/2, ay = -hd.sy * s.h/2; // גודל לפי תנועת האצבע (לא לפי מיקום הידית) – מדויק גם כשהידית מרוחקת
   let w = hd.sx ? Math.max(minS, s.w + hd.sx * (l.x - l0.x)) : s.w, h = hd.sy ? Math.max(minS, s.h + hd.sy * (l.y - l0.y)) : s.h;
   if (hd.sx && hd.sy){ const sc = Math.max(w / s.w, h / s.h); w = s.w * sc; h = s.h * sc; if (it.t === 'text') it.size = s.size * sc; }
+  { const mW = elMaxW(it, s.w); if (w > mW){ const f = mW / w; w *= f; if (hd.sy) h = Math.max(s.h, h * f); } if (w >= mW - .01 && w > s.w && !ED.maxTip){ ED.maxTip = 1; toast('זה הגודל המקסימלי שבו האלמנט עדיין חד בדפוס'); } }
   const cl = {x:hd.sx ? ax + hd.sx * w/2 : 0, y:hd.sy ? ay + hd.sy * h/2 : 0}, cg = fromLocalVec(s, cl);
   const cx = s.x + s.w/2 + cg.x, cy = s.y + s.h/2 + cg.y;
   it.w = w; it.h = h; it.x = cx - w/2; it.y = cy - h/2;
@@ -3388,7 +3393,7 @@ function edPinchMove(){
   const sc = d / Math.max(1, P0.d0);
   if (ED.crop){ it.zoom = clamp((P0.s.zoom || 1) * sc, 1, 5); edPan(it, {...P0.s, zoom:it.zoom}, m.x - P0.m0.x, m.y - P0.m0.y); }
   else {
-    const w = Math.max(6, P0.s.w * sc), h = Math.max(6, P0.s.h * sc);
+    const sc2 = Math.min(sc, elMaxW(it, P0.s.w) / P0.s.w), w = Math.max(6, P0.s.w * sc2), h = Math.max(6, P0.s.h * sc2);
     const cx = P0.s.x + P0.s.w/2 + (m.x - P0.m0.x), cy = P0.s.y + P0.s.h/2 + (m.y - P0.m0.y);
     it.w = w; it.h = h; it.x = cx - w/2; it.y = cy - h/2;
     it.rot = Math.round(((P0.s.rot || 0) + (ang - P0.a0) * 180 / Math.PI) * 10) / 10;
@@ -4887,12 +4892,15 @@ function drawElItem(ctx, it, k, ox, img){
   ctx.globalAlpha = it.op == null ? 1 : it.op;
   const x = mx(it.x, k, ox), y = mx(it.y, k, ox), w = it.w * k, h = it.h * k;
   if (it.shadow){ ctx.shadowColor = 'rgba(0,0,0,.28)'; ctx.shadowBlur = 2.2 * k; ctx.shadowOffsetY = .8 * k; }
+  else if (RT.bgLum < .38){ const e = elInfo(it.el); if (e && e.lum != null && e.lum < .4){ ctx.shadowColor = 'rgba(255,236,200,.5)'; ctx.shadowBlur = Math.max(2, Math.min(it.w, it.h) * .05) * k; } } // אלמנט כהה על רקע כהה – הילה עדינה בהירה שמפרידה אותו
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
   if (it.flip){ ctx.translate(x + w, y); ctx.scale(-1, 1); ctx.drawImage(img, 0, 0, w, h); }
   else ctx.drawImage(img, x, y, w, h);
   ctx.restore();
 }
 /* איכות לדפוס: כמה פיקסלים לאינץ' יש לאלמנט בגודל הנוכחי */
+/* כמה מ"מ מותר לאלמנט (לפחות 150dpi בדפוס). אם כבר גדול יותר – לא מקטינים, רק לא נותנים לגדול עוד */
+function elMaxW(it, cur){ if (it.t !== 'el' || String(it.el).startsWith('v:')) return Infinity; const e = elInfo(it.el); return e ? Math.max(cur || 0, e.w / 150 * 25.4) : Infinity; }
 function elDpi(it){ const e = elInfo(it.el); return e ? Math.round(e.w / (it.w / 25.4)) : 300; }
 
 /* ---------- מגירת האלמנטים ---------- */
@@ -4907,7 +4915,7 @@ async function openElDrawer(){
     if (cat === 'event') return evc.flatMap(c => ELS.cat.filter(e => e.c === c));
     return ELS.cat.filter(e => e.c === cat);
   };
-  const src = e => e.vec ? e.url : e.id.startsWith('u:') ? (e.url || '') : EL_BASE() + e.f;
+  const src = e => e.vec ? e.url : e.id.startsWith('u:') ? (e.url || '') : EL_BASE() + 'th/' + e.f; // תמונה קטנה למגירה, הקובץ החד נטען רק כשמשתמשים
   const draw = () => {
     const L = list();
     s.innerHTML = `<div class="sheet el-sheet"><div class="grab"></div>
@@ -5554,8 +5562,9 @@ async function startScenes(){
 }
 function sceneCount(){ return S.photos.filter(p => p.scene).length; }
 
-$('scSw').onclick = async () => { S.project.sceneTitles = !S.project.sceneTitles; touchProject(); updDesignRow();
-  if (!sceneCount()){ toast('כדי שיהיו כותרות פרק צריך קודם ללמד את המערכת סוגי תמונות'); return; }
+$('scSw').onclick = async () => {
+  if (!S.project.sceneTitles && !sceneCount()){ if (!document.querySelector('.toast')) toast('כותרות פרק עדיין לא זמינות – המערכת לא זיהתה סוגי תמונות באלבום הזה'); return; } // לא מדליקים מתג שלא עושה כלום
+  S.project.sceneTitles = !S.project.sceneTitles; touchProject(); updDesignRow();
   if (PV.plan){ PV.plan.spreads = replanKeepCustom(PV.plan.spreads, PV.plan.seed); savePlan(); buildStrip(); showSpread(PV.cur = 0); } };
 
 /* =========================================================
@@ -5834,7 +5843,7 @@ async function bkCovers(){
 }
 async function bkEnsure(...idx){
   for (const i of idx){ if (i < 0 || i >= BK.n || BK.cache.has(i)) continue;
-    let cv = document.createElement('canvas'); await paint(cv, PV.plan.spreads[i], 1200, {maxDpr:1}); if (isLTR()){ const f = flipCv(cv); cv.width = 1; cv = f; } BK.cache.set(i, cv);
+    let cv = document.createElement('canvas'); await paint(cv, PV.plan.spreads[i], Math.round(Math.min(2400, Math.max(1200, (BK.cv && BK.cv.width || 0) * .96))), {maxDpr:1}); // חדות לפי רוחב המסך בפועל if (isLTR()){ const f = flipCv(cv); cv.width = 1; cv = f; } BK.cache.set(i, cv);
     if (BK.cache.size > 7){ const far = [...BK.cache.keys()].sort((a, b) => Math.abs(b - BK.pos) - Math.abs(a - BK.pos))[0]; if (!idx.includes(far)){ BK.cache.get(far).width = 1; BK.cache.delete(far); } } }
 }
 function bkFace(side, k){
@@ -5952,7 +5961,10 @@ async function bkWide(on){
     try{ if (document.fullscreenElement) await document.exitFullscreen(); }catch(_){}
   }
   zoomReset(el.querySelector('.bk-stage'));
-  setTimeout(() => { if (BK.open && !BK.rec){ bkSize(); bkPaint(); } }, 250);
+  setTimeout(async () => { if (!BK.open || BK.rec) return; bkSize(); bkPaint();
+    const need = Math.min(2400, BK.cv.width * .96); // מסך רחב יותר – מציירים מחדש את הכפולות הקרובות בחדות גבוהה
+    for (const [i, c] of [...BK.cache]) if (c.width < need * .9){ c.width = 1; BK.cache.delete(i); }
+    await bkEnsure(BK.pos - 1, BK.pos, BK.pos + 1); if (BK.open && !BK.busy) bkPaint(); }, 250);
 }
 function closeBook(){
   if (!BK.open) return; BK.open = false; BK.play = false;
@@ -6696,7 +6708,7 @@ function preflightSpread(sp, no){
         }
       }
     }
-    else if (it.t === 'el' && !String(it.el).startsWith('v:')){ const d = elDpi(it); if (d < 120) add('warn', `אלמנט מוגדל מדי (${d}dpi)`); }
+    else if (it.t === 'el' && !String(it.el).startsWith('v:')){ const d = elDpi(it); if (d < 100) add('err', `אלמנט מוגדל מדי – ייצא מטושטש (${d}dpi)`); else if (d < 150) add('warn', `אלמנט על גבול החדות (${d}dpi)`); }
     else if (it.t === 'text' && (it.text || '').trim()){
       if (it.x < safe || it.y < safe || it.x + it.w > G.W - safe || it.y + it.h > G.H - safe) add('warn', 'טקסט קרוב מדי לקו החיתוך');
       if (fold != null && !it.rot && it.x < fold - 2 && it.x + it.w > fold + 2) add('warn', 'טקסט חוצה את קו הקיפול');
