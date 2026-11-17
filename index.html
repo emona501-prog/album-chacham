@@ -3776,7 +3776,7 @@ function printCfg(){ return Object.assign({bleed:3, marks:true, format:'pdf', bi
 /* הגדרות מוכנות לפי דרישות כל מעבדה */
 const LABS = {
   gen:       {n:'כללי', set:{bleed:3, marks:true, format:'pdf', pages:'spreads', safe:5}},
-  laserlink: {n:'לייזרלינק', set:{bleed:0, marks:false, format:'jpg', pages:'spreads', safe:10}, note:'לפי דרישות לייזרלינק: כפולות JPG ממוספרות 01, 02…, ‏300dpi‏, sRGB, בגודל האלבום הפתוח בדיוק. 1 ס״מ מכל קצה עלול להיחתך – הבדיקה לפני דפוס מתריעה על ראשים וטקסט באזור הזה.'},
+  laserlink: {n:'לייזרלינק', spreads:[10, 60], set:{bleed:0, marks:false, format:'jpg', pages:'spreads', safe:10}, note:'לפי דרישות לייזרלינק: כפולות JPG ממוספרות 01, 02…, ‏300dpi‏, sRGB, בגודל האלבום הפתוח בדיוק. 1 ס״מ מכל קצה עלול להיחתך – הבדיקה לפני דפוס מתריעה על ראשים וטקסט באזור הזה.'},
   dprint:    {n:'דיפרינט', set:{bleed:3, marks:false, format:'pdf', pages:'single', safe:5}, note:'לפי דרישות דיפרינט: PDF של עמודים בודדים, sRGB.'}
 };
 /* חיתוך כפולה לשני עמודים בודדים – כל עמוד עם גלישה מכל הצדדים (בצד הקיפול הגלישה היא המשך התמונה מהעמוד השני) */
@@ -6628,7 +6628,8 @@ function preflightSpread(sp, no){
   const seen = new Set(); return out.filter(o => { const k = o.sev + o.msg.replace(/\(\d+dpi\)/, ''); if (seen.has(k)) return false; seen.add(k); return true; });
 }
 function preflightAll(includeCover){
-  const all = [];
+  const all = [], lab = LABS[printCfg().lab], n = PV.plan.spreads.length;
+  if (lab && lab.spreads && (n < lab.spreads[0] || n > lab.spreads[1])) all.push({no:1, sev:'err', msg:`ב${lab.n} אלבום צריך ${lab.spreads[0]}–${lab.spreads[1]} כפולות, ויש ${n}`});
   PV.plan.spreads.forEach((sp, i) => { CUR_SP_INDEX = i; try{ all.push(...preflightSpread(sp, i + 1)); }catch(e){ console.warn(e); } });
   if (includeCover && PV.plan.cover){ try{ all.push(...preflightSpread(PV.plan.cover, 0)); }catch(_){} }
   return all;
