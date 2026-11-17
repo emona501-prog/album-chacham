@@ -2969,12 +2969,16 @@ function headGuard(L, soft){
     const heads = headBoxes(m);
     const win = () => { const s = coverRect(m.width, m.height, fa, it.fx, it.fy, it.zoom); return [s.sx / m.width, s.sy / m.height, (s.sx + s.sw) / m.width, (s.sy + s.sh) / m.height]; };
     const inside = w => heads.every(h => h[0] >= w[0] - .004 && h[1] >= w[1] - .004 && h[2] <= w[2] + .004 && h[3] <= w[3] + .004);
+    // מעבדה שחותכת עד X מ״מ מקצה הדף: בתמונה שנוגעת בקצה – הראש חייב להיות גם מחוץ לאזור הזה
+    const G0 = L.G || geo(), sf = !it.rot && typeof printCfg === 'function' && printCfg().safe >= 8 ? printCfg().safe : 0;
+    const inL = sf && it.x < 1 ? sf : 0, inR = sf && it.x + it.w > G0.W - 1 ? sf : 0, inT = sf && it.y < 1 ? sf : 0, inB = sf && it.y + it.h > G0.H - 1 ? sf * .5 : 0;
+    const winS = () => { const w = win(), kx = (w[2] - w[0]) / iw, ky = (w[3] - w[1]) / ih; return [w[0] + inL*kx, w[1] + inT*ky, w[2] - inR*kx, w[3] - inB*ky]; };
     let ok = false;
     if (heads.length){
-      ok = inside(win());
+      ok = inside(winS());
       if (!ok){ // מנסים להזיז את החיתוך כך שכל הראשים ייכנסו
         const U = [Math.min(...heads.map(h => h[0])), Math.min(...heads.map(h => h[1])), Math.max(...heads.map(h => h[2])), Math.max(...heads.map(h => h[3]))];
-        const keep = [it.fx, it.fy]; it.fx = (U[0] + U[2]) / 2; it.fy = (U[1] + U[3]) / 2; ok = inside(win());
+        const keep = [it.fx, it.fy]; it.fx = (U[0] + U[2]) / 2; it.fy = (U[1] + U[3]) / 2; ok = inside(winS());
         if (!ok && L.keepFill){ const w0 = win(), wh = w0[3] - w0[1], ww = w0[2] - w0[0]; // קולאז׳: עדיף לשמור על החלק העליון של הראשים
           it.fy = clamp(U[1] - .02 + wh/2, wh/2, 1 - wh/2); it.fx = clamp((U[0] + U[2]) / 2, ww/2, 1 - ww/2); }
         else if (!ok){ it.fx = keep[0]; it.fy = keep[1]; }
@@ -3768,7 +3772,13 @@ const MATERIALS = [
 ];
 const DEBOSS = {gold:{n:'זהב', c:'#D4AF63'}, silver:{n:'כסף', c:'#D5D7DA'}, blind:{n:'עיוורת (בלי צבע)', c:null}};
 
-function printCfg(){ return Object.assign({bleed:3, marks:true, format:'pdf', binding:'layflat', safe:5, pages:'spreads'}, S.project.print || {}); }
+function printCfg(){ return Object.assign({bleed:3, marks:true, format:'pdf', binding:'layflat', safe:5, pages:'spreads', lab:'gen'}, S.project.print || {}); }
+/* הגדרות מוכנות לפי דרישות כל מעבדה */
+const LABS = {
+  gen:       {n:'כללי', set:{bleed:3, marks:true, format:'pdf', pages:'spreads', safe:5}},
+  laserlink: {n:'לייזרלינק', set:{bleed:0, marks:false, format:'jpg', pages:'spreads', safe:10}, note:'לפי דרישות לייזרלינק: כפולות JPG ממוספרות 01, 02…, ‏300dpi‏, sRGB, בגודל האלבום הפתוח בדיוק. 1 ס״מ מכל קצה עלול להיחתך – הבדיקה לפני דפוס מתריעה על ראשים וטקסט באזור הזה.'},
+  dprint:    {n:'דיפרינט', set:{bleed:3, marks:false, format:'pdf', pages:'single', safe:5}, note:'לפי דרישות דיפרינט: PDF של עמודים בודדים, sRGB.'}
+};
 /* חיתוך כפולה לשני עמודים בודדים – כל עמוד עם גלישה מכל הצדדים (בצד הקיפול הגלישה היא המשך התמונה מהעמוד השני) */
 async function splitSpread(pg){
   const G = pg.G, k = pg.W / (G.W + 2*G.B), pw = Math.round((G.pw + 2*G.B) * k), xs = [0, Math.round(G.pw * k)];
@@ -4044,15 +4054,22 @@ async function renderCover(){
    שלב 7ב – ייצוא לפי דרישות בית הדפוס: גלישה, סימני חיתוך, PDF/JPG ב-300dpi, חבילת ZIP ומפרט הזמנה
    ========================================================= */
 /* JPEG: כותבים 300dpi בכותרת JFIF – בתי דפוס בודקים את זה */
+/* פרופיל צבע sRGB מוטמע בכל JPG (מקטע APP2 ICC_PROFILE) – המעבדה יודעת בדיוק איך לפרש את הצבעים */
+function iccApp2(){
+  const icc = Uint8Array.from(atob(SRGB_ICC), c => c.charCodeAt(0)), sig = new TextEncoder().encode('ICC_PROFILE\0'), len = 2 + sig.length + 2 + icc.length;
+  const out = new Uint8Array(2 + len); out.set([0xFF, 0xE2, len >> 8, len & 255]); out.set(sig, 4); out.set([1, 1], 4 + sig.length); out.set(icc, 6 + sig.length); return out;
+}
 async function jpegWithDpi(blob, dpi = DPI){
   const u = new Uint8Array(await blob.arrayBuffer());
   if (u[0] !== 0xFF || u[1] !== 0xD8) return blob;
+  const hasIcc = new TextDecoder('latin1').decode(u.subarray(0, Math.min(u.length, 4096))).includes('ICC_PROFILE'); // הדפדפן כבר הטמיע sRGB – לא מכפילים
+  const icc = () => hasIcc ? new Uint8Array(0) : iccApp2();
   if (u[2] === 0xFF && u[3] === 0xE0 && u[6] === 0x4A && u[7] === 0x46 && u[8] === 0x49 && u[9] === 0x46){
     u[13] = 1; u[14] = dpi >> 8; u[15] = dpi & 255; u[16] = dpi >> 8; u[17] = dpi & 255;
-    return new Blob([u], {type:'image/jpeg'});
+    const L = (u[4] << 8) | u[5]; return new Blob([u.subarray(0, 4 + L), icc(), u.subarray(4 + L)], {type:'image/jpeg'});
   }
   const app0 = new Uint8Array([0xFF, 0xE0, 0, 16, 0x4A, 0x46, 0x49, 0x46, 0, 1, 1, 1, dpi >> 8, dpi & 255, dpi >> 8, dpi & 255, 0, 0]);
-  return new Blob([u.subarray(0, 2), app0, u.subarray(2)], {type:'image/jpeg'});
+  return new Blob([u.subarray(0, 2), app0, icc(), u.subarray(2)], {type:'image/jpeg'});
 }
 /* ZIP בלי דחיסה (תמונות JPEG ממילא דחוסות) */
 const CRC_T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++){ let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
@@ -4128,11 +4145,13 @@ function exportChooser(){
         <div class="sec-title" style="margin:16px 0 6px">הגדרות דפוס</div>
         <div class="ctrl ex-set">
           <div class="ctrl-row"><span>סוג קובץ</span>${seg('format', [['pdf', 'PDF'], ['jpg', 'JPG']])}</div>
+          <div class="ctrl-row"><span>מעבדה</span>${seg('lab', Object.entries(LABS).map(([k, v]) => [k, v.n]))}</div>
           <div class="ctrl-row"><span>מבנה הקובץ${pc.pages === 'single' ? '<br><small style="color:var(--muted)">כל כפולה = 2 עמודים בקובץ</small>' : ''}</span>${seg('pages', [['spreads', 'כפולות'], ['single', 'עמודים בודדים']])}</div>
-          <div class="ctrl-row"><span>גלישה</span>${seg('bleed', [[3, '3 מ״מ'], [5, '5 מ״מ']])}</div>
+          <div class="ctrl-row"><span>גלישה</span>${seg('bleed', [[0, 'בלי'], [3, '3 מ״מ'], [5, '5 מ״מ']])}</div>
           <div class="ctrl-row"><span>סימני חיתוך${pc.format === 'jpg' ? '<br><small style="color:var(--muted)">רק ב-PDF</small>' : ''}</span>${seg('marks', [[true, 'כן'], [false, 'לא']])}</div>
           <div class="ctrl-row"><span>כריכה פנימית</span>${seg('binding', [['layflat', 'פתיחה שטוחה'], ['regular', 'רגילה']])}</div>
         </div>
+        ${LABS[pc.lab] && LABS[pc.lab].note ? `<p class="note" style="background:#EEF5EC">✓ ${LABS[pc.lab].note}</p>` : ''}
         <p class="note">${pc.binding === 'regular' ? 'בכריכה רגילה החלק שליד האמצע נבלע בתפר. בעורך יסומן אזור של 15 מ״מ ליד הקיפול – לא לשים שם פנים או טקסט.' : 'רוב בתי הדפוס מבקשים גלישה של 3 מ״מ. אם בית הדפוס מבקש קבצים בלי סימני חיתוך – בחרו "לא".'}</p>
         <button class="btn ghost" data-a="x" style="box-shadow:none;background:none;color:var(--muted);margin-top:4px">ביטול</button></div>`;
     };
@@ -4140,7 +4159,8 @@ function exportChooser(){
     s.onclick = e => {
       const k = e.target.closest('[data-k]');
       if (k){ const v = k.dataset.v, val = v === 'true' ? true : v === 'false' ? false : isNaN(+v) ? v : +v;
-        S.project.print = Object.assign(printCfg(), {[k.dataset.k]:val}); touchProject(); draw(); return; }
+        const ch = {[k.dataset.k]:val}; if (k.dataset.k === 'lab') Object.assign(ch, LABS[val].set); else ch.lab = printCfg().lab === 'gen' ? 'gen' : 'custom';
+        S.project.print = Object.assign(printCfg(), ch); touchProject(); draw(); return; }
       const a = e.target.closest('[data-a]'); if (a || e.target === s){ s.remove(); res(a ? a.dataset.a : 'x'); }
     };
     document.body.appendChild(s);
@@ -4199,7 +4219,7 @@ async function exportFlow(pre){
     }
     else if (pages.length){
       if (pc.format === 'pdf') files.push({name:choice === 'one' ? `spread_${pad(pages[0].no)}.pdf` : `spreads_${pad(1)}-${pad(pages.length)}.pdf`, blob:await buildPDF(pages, pages[0].G, S.project.name || 'Photobook', opt)});
-      else for (const p of pages){ const one = await stripsToJpeg(p); if (one) files.push({name:`spread_${pad(p.no)}.jpg`, blob:await jpegWithDpi(one)}); else for (let i = 0; i < p.strips.length; i++) files.push({name:`spread_${pad(p.no)}_part${i + 1}.jpg`, blob:await jpegWithDpi(p.strips[i].jpeg)}); }
+      else for (const p of pages){ const one = await stripsToJpeg(p); if (one) files.push({name:pc.lab === 'laserlink' ? `${pad(p.no)}.jpg` : `spread_${pad(p.no)}.jpg`, blob:await jpegWithDpi(one)}); else for (let i = 0; i < p.strips.length; i++) files.push({name:`spread_${pad(p.no)}_part${i + 1}.jpg`, blob:await jpegWithDpi(p.strips[i].jpeg)}); }
     }
     if (choice === 'pkg' || (choice === 'cover' && ct.none)) files.push({name:'מפרט-הזמנה.txt', blob:orderSpec()});
     let out;
@@ -6569,7 +6589,7 @@ function bkVideoDialog(secs){
 
 /* ---------- בדיקה לפני דפוס: עוברת על כל הכפולות ומחפשת בעיות שיפגעו בהדפסה ---------- */
 function preflightSpread(sp, no){
-  const out = [], L = layoutSpread(sp), G = L.G, fold = G.cover ? null : G.W / 2, safe = Math.max(4, (G.m || 10) * .45);
+  const pc = printCfg(), out = [], L = layoutSpread(sp), G = L.G, fold = G.cover ? null : G.W / 2, safe = Math.max(4, (G.m || 10) * .45, pc.safe >= 8 ? pc.safe : 0);
   const add = (sev, msg) => out.push({no, sev, msg});
   const photos = L.items.filter(i => i.t === 'photo');
   if (!G.cover && !photos.length && !L.items.some(i => i.t === 'text')) add('warn', 'כפולה ריקה');
@@ -6588,6 +6608,10 @@ function preflightSpread(sp, no){
           const hx0 = h[0]*m.width, hy0 = h[1]*m.height, hx1 = h[2]*m.width, hy1 = h[3]*m.height, ha = (hx1 - hx0) * (hy1 - hy0); if (ha <= 0) continue;
           const ix = Math.max(0, Math.min(hx1, cr.sx + cr.sw) - Math.max(hx0, cr.sx)), iy = Math.max(0, Math.min(hy1, cr.sy + cr.sh) - Math.max(hy0, cr.sy)), fr = ix * iy / ha;
           if (fr > .2 && fr < .9){ add('err', 'ראש חתוך בגבול התמונה'); break; }
+        }
+        if (pc.safe >= 8 && !it.rot){ // מעבדה שחותכת עד 1 ס״מ מהקצה: ראש קרוב לקצה הדף ייחתך
+          const X = u => it.x + b + ((u * m.width - cr.sx) / cr.sw) * iw, Y = u => it.y + b + ((u * m.height - cr.sy) / cr.sh) * ih;
+          if (H.some(h => Y(h[1]) < pc.safe || X(h[0]) < pc.safe || X(h[2]) > G.W - pc.safe || Y(h[1]) > G.H - pc.safe)) add('err', `ראש בטווח ${pc.safe / 10} ס״מ מקצה הדף – עלול להיחתך`);
         }
         if (fold != null && !it.rot && it.x < fold - 3 && it.x + it.w > fold + 3){ // פנים על קו הקיפול
           const X = u => it.x + b + ((u * m.width - cr.sx) / cr.sw) * iw;
