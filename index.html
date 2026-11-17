@@ -442,6 +442,11 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
 #paper{overflow:hidden}
 #paper.zoomed,.lb-stage.zoomed,.bk-stage.zoomed{touch-action:none}
 .bk-stage{overflow:hidden}
+.bk-exitw{display:none;position:absolute;top:10px;inset-inline-end:10px;z-index:3;width:40px;height:40px;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:18px}
+.bk.bk-wide{background:#0E0C0B}
+.bk.bk-wide .bk-top,.bk.bk-wide .bk-bar{display:none}
+.bk.bk-wide .bk-exitw{display:block}
+.bk.bk-rot .bk-stage{position:fixed;flex:none;top:0;left:100vw;width:100vh;height:100vw;transform-origin:0 0;transform:rotate(90deg)} /* מסובבים את הבמה ולא את המסך המלא – למסך מלא יש חסימה של transform */
 .fs canvas{touch-action:none}
 
 .col-sheet{max-height:86vh}
@@ -5863,8 +5868,8 @@ async function bkFlip(dir){
 async function openBook(){
   if (BK.open || !PV.plan) return;
   const el = document.createElement('div'); el.className = 'bk';
-  el.innerHTML = `<div class="bk-top"><button class="ed-ic dark" data-a="x" aria-label="סגירה">✕</button><b id="bkT">תצוגת ספר</b><button class="ed-ic dark" data-help="book" style="font-size:17px">💡</button></div>
-    <div class="bk-stage"><canvas></canvas><div class="bk-load"><div>${LOADER}<small>מכין את הספר…</small></div></div></div>
+  el.innerHTML = `<div class="bk-top"><button class="ed-ic dark" data-a="x" aria-label="סגירה">✕</button><b id="bkT">תצוגת ספר</b><span style="display:flex;gap:6px"><button class="ed-ic dark" data-a="wide" aria-label="מסך מלא לרוחב" style="font-size:18px">⤢</button><button class="ed-ic dark" data-help="book" style="font-size:17px">💡</button></span></div>
+    <div class="bk-stage"><canvas></canvas><button class="bk-exitw" data-a="unwide" aria-label="יציאה ממסך מלא">✕</button><div class="bk-load"><div>${LOADER}<small>מכין את הספר…</small></div></div></div>
     <div class="bk-bar"><button data-a="prev">▶ הקודם</button><button data-a="play">ניגון אוטומטי</button><button data-a="next">הבא ◀</button></div>
     <div class="bk-bar"><button data-a="first">לכריכה</button><button data-a="video" class="acc">⬇ הורדה כסרטון</button></div>`;
   document.body.appendChild(el);
@@ -5874,11 +5879,12 @@ async function openBook(){
   await bkCovers(); if (!BK.open) return;
   el.querySelector('.bk-load').remove(); bkPaint();
   let sx = null;
-  BK.cv.addEventListener('pointerdown', e => { sx = e.clientX; });
+  const rot = () => BK.el.classList.contains('bk-rot'); // מצב מסובב בכוח: ציר הספר האופקי = ציר המסך האנכי
+  BK.cv.addEventListener('pointerdown', e => { sx = rot() ? e.clientY : e.clientX; });
   const bkSt = el.querySelector('.bk-stage'); pinchZoom(bkSt, () => BK.cv);
-  BK.cv.addEventListener('pointerup', e => { if (sx == null) return; const dx = e.clientX - sx, r = BK.cv.getBoundingClientRect(); sx = null;
+  BK.cv.addEventListener('pointerup', e => { if (sx == null) return; const dx = (rot() ? e.clientY : e.clientX) - sx, r = BK.cv.getBoundingClientRect(); sx = null;
     if (zoomBusy(bkSt) || !e.isPrimary) return; const L = isLTR() ? -1 : 1;
-    if (Math.abs(dx) > 30) bkFlip((dx > 0 ? 1 : -1) * L); else bkFlip((e.clientX < r.left + r.width/2 ? 1 : -1) * L); });
+    if (Math.abs(dx) > 30) bkFlip((dx > 0 ? 1 : -1) * L); else bkFlip(((rot() ? e.clientY < r.top + r.height/2 : e.clientX < r.left + r.width/2) ? 1 : -1) * L); });
   el.addEventListener('click', async e => {
     const a = e.target.closest('[data-a]'); if (!a) return; const k = a.dataset.a;
     if (k === 'x'){ history.back(); return; }
@@ -5888,12 +5894,35 @@ async function openBook(){
     if (k === 'play'){ BK.play = !BK.play; a.textContent = BK.play ? 'עצירה' : 'ניגון אוטומטי';
       while (BK.play && BK.open){ if (!(await bkFlip(1))){ BK.play = false; a.textContent = 'ניגון אוטומטי'; break; } await new Promise(r => setTimeout(r, 1300)); } }
     if (k === 'video') bkRecord();
+    if (k === 'wide') bkWide(true);
+    if (k === 'unwide') bkWide(false);
   });
+  BK.onFs = () => { if (!document.fullscreenElement && BK.el.classList.contains('bk-wide') && !BK.el.classList.contains('bk-rot')) bkWide(false); }; document.addEventListener('fullscreenchange', BK.onFs);
   BK.onRz = () => { if (BK.open && !BK.rec){ bkSize(); bkPaint(); } }; addEventListener('resize', BK.onRz);
+}
+/* מסך מלא לרוחב: הספר ממלא את כל המסך. קודם מנסים לסובב את הטלפון באמת (מסך מלא + נעילת כיוון);
+   אם הדפדפן לא מאפשר – מסובבים את התצוגה עצמה ב-90° */
+async function bkWide(on){
+  const el = BK.el; if (!el) return;
+  if (on){
+    el.classList.add('bk-wide');
+    try{ if (el.requestFullscreen && !document.fullscreenElement) await el.requestFullscreen({navigationUI:'hide'}); }catch(_){}
+    let locked = false; try{ if (screen.orientation && screen.orientation.lock){ await screen.orientation.lock('landscape'); locked = true; } }catch(_){}
+    if (locked) await new Promise(r => setTimeout(r, 450)); // נותנים למסך להסתובב
+    if (innerHeight > innerWidth) el.classList.add('bk-rot'); // לא הסתובב – מסובבים את התצוגה עצמה
+    if (!BK.wideTip){ BK.wideTip = 1; toast('החליקו או געו בצד כדי לדפדף · ✕ ליציאה', 2600); }
+  } else {
+    el.classList.remove('bk-wide', 'bk-rot');
+    try{ screen.orientation && screen.orientation.unlock && screen.orientation.unlock(); }catch(_){}
+    try{ if (document.fullscreenElement) await document.exitFullscreen(); }catch(_){}
+  }
+  zoomReset(el.querySelector('.bk-stage'));
+  setTimeout(() => { if (BK.open && !BK.rec){ bkSize(); bkPaint(); } }, 250);
 }
 function closeBook(){
   if (!BK.open) return; BK.open = false; BK.play = false;
   if (BK.rec){ try{ BK.rec.cancel = true; BK.rec.mr.stop(); }catch(_){} }
+  if (BK.el.classList.contains('bk-wide')) bkWide(false); document.removeEventListener('fullscreenchange', BK.onFs);
   removeEventListener('resize', BK.onRz); BK.cache.forEach(c => { c.width = 1; }); BK.cache.clear(); BK.el.remove(); wakeOff();
 }
 /* ---------- הקלטת הדפדוף לסרטון (עם סימן מים) ---------- */
