@@ -1255,6 +1255,7 @@ function closeLightbox(silent){
   LB.el.remove(); LB = null;
 }
 addEventListener('popstate', () => {
+  if (ELS.skipPop){ ELS.skipPop = 0; return; }
   if (BK.open && !document.querySelector('.modal-scrim')) closeBook();
   else if (ELS.drawer) ELS.closeDrawer();
   else if (LB) closeLightbox();
@@ -5134,7 +5135,9 @@ function elDpi(it){ const e = elInfo(it.el); return e ? Math.round(e.w / (it.w /
 
 /* ---------- מגירת האלמנטים ---------- */
 async function openElDrawer(){
-  await elsLoad(); await Promise.all(Object.keys(VORN).filter(k => VORN[k].src).map(getEl));
+  if (ELS.drawer || ELS.opening) return; ELS.opening = 1; // לחיצה כפולה פתחה שתי מגירות – ואחת נשארה תקועה
+  try{ await elsLoad(); }finally{ ELS.opening = 0; }
+  if (ELS.drawer) return; await Promise.all(Object.keys(VORN).filter(k => VORN[k].src).map(getEl));
   const ev = S.project.event || 'general', evc = EV_CATS[ev] || EV_CATS.general;
   let cat = 'event';
   const s = document.createElement('div'); s.className = 'scrim el-scrim';
@@ -5156,19 +5159,20 @@ async function openElDrawer(){
   };
   draw(); document.body.appendChild(s);
   history.pushState({eld:1}, ''); ELS.drawer = s;
-  const close = () => { if (ELS.drawer){ ELS.drawer.remove(); ELS.drawer = null; } };
+  const close = () => { s.remove(); if (ELS.drawer === s) ELS.drawer = null; };
   ELS.closeDrawer = close;
+  const shut = () => { close(); if (history.state && history.state.eld){ ELS.skipPop = 1; history.back(); } }; // סוגרים מיד, ורק מנקים את ההיסטוריה
   const fin = document.createElement('input'); fin.type = 'file'; fin.accept = 'image/png,image/webp,image/jpeg'; fin.multiple = true;
   fin.onchange = async () => { const fs = [...fin.files]; fin.value = ''; for (const f of fs) await addMyElement(f); draw(); };
   s.onclick = async e => {
-    if (e.target === s){ history.back(); return; }
+    if (e.target === s){ shut(); return; }
     const c = e.target.closest('[data-c]'), a = e.target.closest('[data-a]'), d = e.target.closest('[data-del]'), el = e.target.closest('[data-e]');
     if (c){ cat = c.dataset.c; draw(); return; }
-    if (a && a.dataset.a === 'x'){ history.back(); return; }
+    if (a && a.dataset.a === 'x'){ shut(); return; }
     if (a && a.dataset.a === 'up'){ fin.click(); return; }
     if (d){ e.stopPropagation(); if (await confirmBox('למחוק את האלמנט?', 'הוא יימחק גם מכפולות שבהן הוא מופיע.', 'מחיקה', true)){
       ELS.mine = ELS.mine.filter(x => x.id !== d.dataset.del); await DB.put('meta', {list:ELS.mine.map(({url, ...r}) => r)}, 'myEls'); DB.tx(['meta'], 'readwrite', t => t.objectStore('meta').delete('el:' + d.dataset.del)).catch(() => {}); draw(); } return; }
-    if (el){ history.back(); addElementToSpread(el.dataset.e); }
+    if (el){ shut(); addElementToSpread(el.dataset.e); }
   };
 }
 async function addElementToSpread(id){
