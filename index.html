@@ -375,6 +375,29 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
 .ev-chips button i{font-style:normal}.ev-chips button small{color:var(--muted);font-size:11px}
 .ev-chips button.on{border-color:var(--accent);background:#FFF5EC;font-weight:700}
 .star-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.fo-grid{max-height:44vh;overflow:auto;padding:2px}
+.sq-list{max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.sq-row{display:flex;gap:10px;align-items:center}.sq-th{display:flex;gap:3px;flex:none}
+.sq-th img{width:44px;height:44px;object-fit:cover;border-radius:8px;background:#EEE7DC}
+.sq-sel{flex:1;display:flex;flex-direction:column;gap:3px}.sq-sel small{color:var(--muted);font-size:11.5px}
+.sq-sel select{width:100%;padding:9px 8px;border-radius:12px;border:1.5px solid #E6DED2;background:#fff;font:inherit;font-size:14px}
+.w-row{display:flex;gap:6px;margin-bottom:6px}.w-row .field{flex:1}.w-row .btn{padding:0 12px;min-width:0}
+.w-sugg{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.w-sugg button{background:#EEE7DC;border-radius:16px;padding:6px 11px;font-size:13px;color:var(--ink,#1a1410)}
+.fo-tap{width:100%;margin-top:10px;font-size:14px}
+.fo-tapscr{flex-direction:column;justify-content:flex-start;align-items:stretch;background:#15110F;padding:12px;overflow:auto;color:#fff}
+.fo-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}.fo-top b{font-size:15px}
+.fo-ph{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.fo-ph button{position:relative;padding:0;border-radius:10px;overflow:hidden;aspect-ratio:1;background:#2a2420}
+.fo-ph img{width:100%;height:100%;object-fit:cover;display:block}
+.fo-ph em{position:absolute;top:4px;right:4px;background:#C9A24A;color:#1a1410;border-radius:10px;padding:1px 7px;font-style:normal;font-size:12px;font-weight:700}
+.fo-wrap{display:flex;justify-content:center}
+.fo-img{position:relative;display:inline-block;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.fo-img img{display:block;max-width:100%;max-height:68vh;pointer-events:none}
+.fo-face{position:absolute;border:2px dashed rgba(255,255,255,.55);border-radius:50%;pointer-events:none;display:flex;align-items:flex-start;justify-content:center;font-style:normal;color:#F3D27A;font-size:14px;line-height:1;text-shadow:0 1px 3px #000}
+.fo-face.on{border:3px solid #E6B94A;box-shadow:0 0 0 2px rgba(0,0,0,.35)}
+.fo-face.man{border-style:solid}
+.fo-face.on::before{content:'';}
+.fo-hint{font-size:12.5px;opacity:.75;text-align:center;margin:10px 0}
 .star-grid button{position:relative;border-radius:14px;overflow:hidden;background:#EEE7DC;padding:0;aspect-ratio:1/1.3;display:flex;flex-direction:column}
 .star-grid img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
 .star-grid span{font-size:11px;color:var(--muted);padding:3px 0}
@@ -1748,7 +1771,13 @@ function altList(sp, idx){
 }
 /* כיתוב לכפולה: כיתוב משלה אם הוגדר (גם ריק = בלי כיתוב), אחרת הכיתוב הכללי של האלבום */
 let CUR_SP = null;
-function spreadWord(){ if (CUR_SP && typeof CUR_SP.word === 'string') return CUR_SP.word.trim(); return (S.project.word || eventWord()).trim(); }
+/* כמה כיתובים: מתפזרים לפי הסדר בין הכפולות שיש בהן מקום לכיתוב (ולא חוזרים על אותו כיתוב ברצף) */
+function projWords(){ const w = (S.project && S.project.words || []).map(x => String(x).trim()).filter(Boolean); return w.length ? w : [(S.project && S.project.word || eventWord()).trim()]; }
+function spreadWord(){ if (CUR_SP && typeof CUR_SP.word === 'string') return CUR_SP.word.trim();
+  const W = projWords(); if (W.length < 2 || !CUR_SP || !PV.plan) return W[0];
+  let k = 0; for (const sp of PV.plan.spreads){ if (sp === CUR_SP) return W[k % W.length];
+    if ((sp.fam === 'cardHero' || sp.fam === 'textMosaic') && typeof sp.word !== 'string' && !sp.custom) k++; }
+  return W[0]; }
 function layoutSpread(sp){
   const prev = STYLE_OVR; STYLE_OVR = (sp && sp.kind !== 'cover' && sp.styleId) || null;
   try{ return layoutSpread0(sp); } finally{ STYLE_OVR = prev; }
@@ -2380,15 +2409,31 @@ $('titleBtn').onclick = () => {
   s.innerHTML = `<div class="modal"><h3>כותרת וכיתובים</h3>
     <div class="sec-title" style="margin:6px 0 6px">כותרת האלבום</div><input class="field" id="tN" maxlength="60" placeholder="למשל: בר המצווה של יוסף">
     <div class="sec-title" style="margin:14px 0 6px">שורה שנייה</div><input class="field" id="tS" maxlength="60" placeholder="למשל: כ״ו שבט תשפ״ו">
-    <div class="sec-title" style="margin:14px 0 6px">כיתוב בכפולות</div><input class="field" id="tW" maxlength="30" placeholder="מזל טוב">
+    <div class="sec-title" style="margin:14px 0 6px">כיתובים בכפולות <small style="font-weight:400;opacity:.7">– המערכת מפזרת אותם לאורך האלבום</small></div>
+    <div id="tWs"></div><button class="btn ghost" data-a="addw" style="width:100%;margin-top:6px">+ עוד כיתוב</button>
+    <div class="w-sugg" id="tSug"></div>
     <div class="acts" style="margin-top:18px"><button class="btn ghost" data-a="0">ביטול</button><button class="btn" data-a="1">שמירה</button></div></div>`;
   document.body.appendChild(s);
-  s.querySelector('#tN').value = S.project.name || ''; s.querySelector('#tS').value = S.project.subtitle || ''; s.querySelector('#tW').value = S.project.word || '';
+  s.querySelector('#tN').value = S.project.name || ''; s.querySelector('#tS').value = S.project.subtitle || '';
+  let ws = (S.project.words && S.project.words.length ? S.project.words : [S.project.word || '']).slice();
+  const read = () => { ws = [...s.querySelectorAll('#tWs input')].map(i => i.value); };
+  const drawW = () => { s.querySelector('#tWs').innerHTML = ws.map((w, i) => `<div class="w-row"><input class="field" maxlength="30" placeholder="${i ? 'כיתוב נוסף' : eventWord()}" value="${esc(w)}">${ws.length > 1 ? `<button class="btn ghost" data-a="delw" data-i="${i}">✕</button>` : ''}</div>`).join('');
+    const have = new Set(ws.map(w => w.trim())); s.querySelector('#tSug').innerHTML = (WORD_SUGG[S.project.event] || WORD_SUGG.general).filter(w => !have.has(w)).map(w => `<button data-sug="${esc(w)}">+ ${esc(w)}</button>`).join(''); };
+  drawW();
   s.onclick = async e => {
+    const sg = e.target.closest('[data-sug]'); if (sg){ read(); const i = ws.findIndex(w => !w.trim()); if (i >= 0) ws[i] = sg.dataset.sug; else if (ws.length < 12) ws.push(sg.dataset.sug); drawW(); return; }
     const a = e.target.closest('[data-a]'); if (!a && e.target !== s) return;
-    if (a && a.dataset.a === '1'){
-      S.project.name = s.querySelector('#tN').value.trim(); S.project.subtitle = s.querySelector('#tS').value.trim(); S.project.word = s.querySelector('#tW').value.trim();
-      touchProject(); s.remove(); showSpread(PV.cur); paintStrip(); return;
+    if (a && a.dataset.a === 'addw'){ read(); if (ws.length < 12) ws.push(''); drawW(); const ins = s.querySelectorAll('#tWs input'); ins[ins.length - 1].focus(); return; }
+    if (a && a.dataset.a === 'delw'){ read(); ws.splice(+a.dataset.i, 1); drawW(); return; }
+    if (a && a.dataset.a === '1'){ read();
+      const W = ws.map(w => w.trim()).filter(Boolean), more = W.length > 1 && W.length > projWords().length;
+      S.project.name = s.querySelector('#tN').value.trim(); S.project.subtitle = s.querySelector('#tS').value.trim(); S.project.words = W; S.project.word = W[0] || '';
+      touchProject(); s.remove();
+      if (more && PV.plan){ // נוספו כיתובים – מסדרים מחדש כדי שיהיו מספיק כפולות עם מקום לכיתוב
+        PV.plan.spreads = replanKeepCustom(PV.plan.spreads, PV.plan.seed); savePlan(); buildStrip();
+        const slots = PV.plan.spreads.filter(sp => (sp.fam === 'cardHero' || sp.fam === 'textMosaic') && typeof sp.word !== 'string' && !sp.custom).length;
+        toast(slots >= W.length ? `${W.length} כיתובים פוזרו לאורך האלבום ✓` : `באלבום הזה יש מקום ל־${slots} כיתובים – אפשר להוסיף כיתוב לכל כפולה ב"עריכת כפולה"`, 4000); }
+      showSpread(PV.cur); paintStrip(); return;
     }
     s.remove();
   };
@@ -2895,6 +2940,7 @@ function planAlbumSmart(ps, seed){
       if (peakId){ const pc = Object.entries(PEAK_FAMS).filter(([f]) => fits(f, ids.length) && !recent.includes(f)); if (pc.length) c = pc; }
       { const fwMax = Math.max(0, ...ids.map(id => (META.get(id) || {}).fw || 0)); // יש כאן מישהו מודגש – מעדיפים עיצוב עם תמונה ראשית גדולה
         if (fwMax) c = c.map(([f, w]) => [f, HERO_FAMS.includes(f) ? w * (1 + fwMax * .7) : w]); }
+      { const nW = projWords().length; if (nW > 1) c = c.map(([f, w]) => [f, (f === 'cardHero' || f === 'textMosaic') ? w * (1 + .3 * Math.min(4, nW - 1)) : w]); } // יותר כיתובים → יותר כפולות עם מקום לכיתוב
       const chapter = firstOfRun && s.scene && S.project.sceneTitles && SCENE_TITLES[s.scene];
       if (chapter){ const cc = ['cardHero', 'textMosaic'].filter(f => fits(f, ids.length)).map(f => [f, 3]); if (cc.length) c = cc; }
       let pick = c.length ? pickDesign(ids, c, rnd, spreads.length, s.cat) : null;
@@ -4367,6 +4413,16 @@ function albumTitle(){
   const ev = EVENTS[S.project.event], hn = (S.project.heroName || '').trim();
   return ev && hn ? ev.title(hn) : 'האלבום שלנו';
 }
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const WORD_SUGG = {
+  barmitzva:['מזל טוב', 'בר מצווה', 'גדלת לתפארת', 'שמחת מצווה', 'רגעים של נחת', 'ברוך שפטרני'],
+  batmitzva:['מזל טוב', 'בת מצווה', 'גדלת לתפארת', 'שמחת מצווה', 'רגעים של נחת'],
+  wedding:['מזל טוב', 'קול ששון וקול שמחה', 'בניין עדי עד', 'לבנות בית נאמן', 'שמחת חתן וכלה', 'רגעים של אושר'],
+  newborn:['ברוכים הבאים', 'מזל טוב', 'שמחה גדולה', 'נס קטן ומתוק'],
+  birthday:['מזל טוב', 'עד 120', 'רגעים של שמחה', 'חגיגה'],
+  family:['רגעים', 'ביחד', 'משפחה', 'זכרונות', 'שמחה'],
+  general:['מזל טוב', 'רגעים', 'שמחה', 'ביחד', 'זכרונות'],
+};
 function eventWord(){ const ev = EVENTS[S.project.event]; return ev ? ev.word : 'מזל טוב'; }
 
 /* ---------- מנועים ---------- */
@@ -4517,6 +4573,7 @@ function clusterPeople(){
     c.best = c.items.slice().sort((a, b) => (b.f.w * (1 + Math.min(1, (b.p.sharp || 0) / 900))) - (a.f.w * (1 + Math.min(1, (a.p.sharp || 0) / 900))))[0];
     c.key = q8(Array.from(c.c));
   });
+  PPL.all = cl.slice().sort((a, b) => b.n - a.n || b.size - a.size); // כולם – גם מי שמופיע בתמונה אחת (להדגשה)
   PPL.clusters = cl.filter(c => c.n >= 2).sort((a, b) => b.n - a.n);
   markStars();
   return PPL.clusters;
@@ -4555,6 +4612,7 @@ function markFocus(){
     if (!fo.length) return;
     (p.faces || []).forEach(f => { if (!f.d) return; const d = dq8(f.d);
       for (const x of fo) if (dist(x.d, d) < .5){ const nF = (p.faces || []).length; p.fw = Math.max(p.fw, x.l * (f.w < .03 ? .4 : nF > 6 ? .6 : 1)); } }); });
+  S.photos.forEach(p => (p.faces || []).forEach(f => { if (f.fo) p.fw = Math.max(p.fw || 0, f.fo); })); // סימון ידני בלחיצה ארוכה
 }
 /* מסמן את פני הכוכב בכל תמונה: m.star = כמה פעמים, m.starW = גודל הפנים */
 function markStars(){
@@ -4677,21 +4735,24 @@ async function rebuildForStars(){
 /* מסך "הדגשת אנשים": כל לחיצה על פנים מחליפה: רגיל → ★ מודגש → ★★ מודגש מאוד → רגיל */
 async function focusButton(){
   if (PPL.active){ toast('עדיין מזהה אנשים… עוד רגע'); return; }
-  if (!PPL.clusters) clusterPeople();
-  const cl = (PPL.clusters || []).slice(0, 16);
-  if (!cl.length){ toast('לא נמצאו מספיק פנים כדי לזהות אנשים'); return; }
-  const lv = {}; (S.project.focus || []).forEach(f => { const c = cl.find(c => dist(dq8(f.k), c.c) < .5); if (c) lv[c.key] = f.l; });
-  const thumbs = await Promise.all(cl.map(c => faceThumb(c.best)));
+  clusterPeople();
+  const cl = (PPL.all || PPL.clusters || []).slice(0, 80);
+  const lv = {}; (S.project.focus || []).forEach(f => { const c = cl.find(c => dist(dq8(f.k), c.c) < .5); lv[c ? c.key : f.k] = f.l; });
+  const thumbs = []; for (const c of cl) thumbs.push(await faceThumb(c.best).catch(() => ''));
+  const nTap = () => S.photos.reduce((a, p) => a + (p.faces || []).filter(f => f.fo).length, 0) + Object.keys(lv).filter(k => !cl.some(c => c.key === k)).length;
   const s = document.createElement('div'); s.className = 'scrim modal-scrim';
   const draw = () => { s.innerHTML = `<div class="modal star-modal"><h3>את מי להדגיש באלבום?</h3>
       <p>לחיצה אחת = <b>★ מודגש</b> · שתיים = <b>★★ מודגש מאוד</b> · שלוש = ביטול.<br>התמונות שלהם יקבלו את המקומות הגדולים והבולטים, ויעדיפו אותן לפתיחה ולכריכה.</p>
-      <div class="star-grid">${cl.map((c, i) => { const l = lv[c.key] || 0; return `<button data-c="${i}" class="${l ? 'on' : ''}"><img src="${thumbs[i]}" alt=""><span>${c.n} תמונות</span>${l ? `<em>${'★'.repeat(l)}</em>` : ''}</button>`; }).join('')}</div>
-      <div class="acts" style="margin-top:14px"><button class="btn ghost" data-a="clr">ניקוי</button><button class="btn ghost" data-a="x">ביטול</button><button class="btn" data-a="ok">אישור</button></div></div>`; };
+      <div class="star-grid fo-grid">${cl.map((c, i) => { const l = lv[c.key] || 0; return `<button data-c="${i}" class="${l ? 'on' : ''}"><img src="${thumbs[i]}" alt=""><span>${c.n > 1 ? c.n + ' תמונות' : 'תמונה 1'}</span>${l ? `<em>${'★'.repeat(l)}</em>` : ''}</button>`; }).join('')}</div>
+      ${cl.length ? '' : '<p style="font-size:13px">המערכת לא זיהתה פנים מספיק ברורות – אפשר לסמן ידנית בתמונות 👇</p>'}
+      <button class="btn ghost fo-tap" data-a="tap">👆 לא מוצאים מישהו? סימון בתמונות${nTap() ? ` <b>(${nTap()} סומנו)</b>` : ''}</button>
+      <div class="acts" style="margin-top:10px"><button class="btn ghost" data-a="clr">ניקוי</button><button class="btn ghost" data-a="x">ביטול</button><button class="btn" data-a="ok">אישור</button></div></div>`; };
   draw(); document.body.appendChild(s);
   s.onclick = async e => {
     const b = e.target.closest('[data-c]'); if (b){ const k = cl[+b.dataset.c].key; lv[k] = ((lv[k] || 0) + 1) % 3; if (!lv[k]) delete lv[k]; draw(); return; }
     const a = e.target.closest('[data-a]'); if (!a) return;
-    if (a.dataset.a === 'clr'){ Object.keys(lv).forEach(k => delete lv[k]); draw(); return; }
+    if (a.dataset.a === 'clr'){ Object.keys(lv).forEach(k => delete lv[k]); S.photos.forEach(p => (p.faces || []).forEach(f => { delete f.fo; })); draw(); return; }
+    if (a.dataset.a === 'tap'){ s.style.display = 'none'; await focusTapMode(lv); s.style.display = ''; draw(); return; }
     s.remove(); if (a.dataset.a === 'x') return;
     S.project.focus = Object.entries(lv).map(([k, l]) => ({k, l})); touchProject();
     markStars(); S.photos.forEach(p => DB.put('photos', p).catch(() => {})); updStarRow();
@@ -4700,6 +4761,75 @@ async function focusButton(){
       savePlan(); buildStrip(); await showSpread(PV.cur = 0); }
     toast(S.project.focus.length ? 'האלבום סודר מחדש – המודגשים בולטים יותר ⭐' : 'ההדגשה בוטלה', 3500);
   };
+}
+/* סימון ידני: בוחרים תמונה, לחיצה ארוכה על אדם → מודגש (שוב = מודגש מאוד, שוב = ביטול).
+   אם המערכת מזהה את הפנים – ההדגשה חלה על האדם בכל התמונות. אם לא – נוצר סימון ידני לתמונה הזו (וגם הראש שלו מוגן מחיתוך) */
+function focusLevelOf(f, lv){
+  if (f.d){ const d = dq8(f.d); for (const k in lv) if (dist(dq8(k), d) < .5) return {k, l:lv[k]}; return {k:null, l:0}; }
+  return {k:null, l:f.fo || 0};
+}
+async function focusDetectAt(p, u, v){
+  const pb = await DB.get('previews', p.id).catch(() => null); if (!pb) return null;
+  const bmp = await createImageBitmap(pb), W = bmp.width, H = bmp.height;
+  const ws = (p.faces || []).map(f => f.w).sort((a, b) => a - b), s0 = ws.length ? ws[ws.length >> 1] : .09;
+  let out = null; const fa = await faInit();
+  if (fa) for (const sc of [1, 1.8, .6]){
+    const fw = clamp(s0 * sc, .03, .5), box = {x:u, y:v, w:fw, h:fw * W / H}, c = cropFace(bmp, box, 200), S2 = Math.max(box.w*W, box.h*H) * 1.9;
+    let r = null; try{ r = await fa.detectSingleFace(c, new fa.TinyFaceDetectorOptions({inputSize:224, scoreThreshold:.15})).withFaceLandmarks(true).withFaceDescriptor().withAgeAndGender(); }catch(_){}
+    c.width = c.height = 1;
+    if (r){ const b = r.detection.box, k = S2 / 200, x0 = u*W - S2/2, y0 = v*H - S2/2;
+      const f = {x:(x0 + (b.x + b.width/2) * k) / W, y:(y0 + (b.y + b.height/2) * k) / H, w:b.width * k / W, h:b.height * k / H, v:1, man:1,
+        d:q8(Array.from(r.descriptor)), age:Math.round(r.age * 10) / 10, g:+(r.gender === 'male' ? r.genderProbability : 1 - r.genderProbability).toFixed(2)};
+      if (Math.hypot((f.x - u) * W, (f.y - v) * H) < Math.max(f.w*W, f.h*H) * 1.3){ Object.assign(f, torsoStats(bmp, f)); out = f; break; } }
+  }
+  if (!out){ const fw = clamp(s0, .04, .3); out = {x:u, y:v, w:fw, h:fw * W / H, man:1}; } // לא זוהה – סימון ידני לפי הנקודה
+  bmp.close(); return out;
+}
+async function focusTapMode(lv){
+  const ps = albumPhotos(); if (!ps.length) return;
+  return new Promise(done => {
+    const s = document.createElement('div'); s.className = 'scrim fo-tapscr';
+    let cur = null, url = null;
+    const close = () => { if (url) URL.revokeObjectURL(url); s.remove(); done(); };
+    const marks = p => (p.faces || []).map(f => [f, focusLevelOf(f, lv).l]);
+    const grid = () => { cur = null; s.innerHTML = `<div class="fo-top"><button class="btn ghost" data-a="x">‹ חזרה</button><b>בחרו תמונה שבה מופיע האדם</b></div>
+      <div class="fo-ph">${ps.map((p, i) => { const n = marks(p).filter(m => m[1]).length; return `<button data-i="${i}"><img data-id="${p.id}" alt="">${n ? `<em>${'★'}${n > 1 ? n : ''}</em>` : ''}</button>`; }).join('')}</div>`;
+      s.querySelectorAll('.fo-ph img').forEach(im => thumbURL(im.dataset.id).then(u => { if (u) im.src = u; })); };
+    const overlay = () => { const box = s.querySelector('.fo-img'), im = box && box.querySelector('img'); if (!im || !im.naturalWidth) return;
+      box.querySelectorAll('.fo-face').forEach(x => x.remove());
+      for (const [f, l] of marks(cur)){ const d = document.createElement('i'); d.className = 'fo-face' + (l ? ' on' : '') + (f.man && !f.d ? ' man' : '');
+        const sz = Math.max(f.w * im.clientWidth, f.h * im.clientHeight) * 1.25;
+        d.style.cssText = `left:${f.x * im.clientWidth - sz/2}px;top:${f.y * im.clientHeight - sz/2}px;width:${sz}px;height:${sz}px`; if (l) d.textContent = '★'.repeat(l); box.appendChild(d); } };
+    const open = async i => { cur = ps[i]; const pb = await DB.get('previews', cur.id).catch(() => null); if (!pb) return;
+      if (url) URL.revokeObjectURL(url); url = URL.createObjectURL(pb);
+      s.innerHTML = `<div class="fo-top"><button class="btn ghost" data-a="back">‹ תמונות</button><b>לחיצה ארוכה על האדם</b></div>
+        <div class="fo-wrap"><div class="fo-img"><img src="${url}" alt="" draggable="false"></div></div>
+        <p class="fo-hint">לחיצה ארוכה = ★ מודגש · שוב = ★★ מודגש מאוד · שוב = ביטול<br>עיגול לבן = מי שהמערכת זיהתה</p>
+        <div class="acts"><button class="btn" data-a="back">סיום התמונה</button></div>`;
+      const im = s.querySelector('.fo-img img'); im.onload = overlay; };
+    let lp = null;
+    s.addEventListener('pointerdown', e => { const im = e.target.closest('.fo-img') && s.querySelector('.fo-img img'); if (!im || !cur) return;
+      const r = im.getBoundingClientRect(), u = (e.clientX - r.left) / r.width, v = (e.clientY - r.top) / r.height; if (u < 0 || u > 1 || v < 0 || v > 1) return;
+      const x0 = e.clientX, y0 = e.clientY;
+      lp = {t:setTimeout(async () => { lp = null; navigator.vibrate && navigator.vibrate(30);
+        const p = cur, R0 = r; let hit = null, bd = 1e9;
+        for (const f of (p.faces || [])){ const dd = Math.hypot((f.x - u) * R0.width, (f.y - v) * R0.height), rad = Math.max(f.w * R0.width, f.h * R0.height) * .9; if (dd < rad && dd < bd){ bd = dd; hit = f; } }
+        if (!hit){ toast('מאתר את האדם…', 1200); hit = await focusDetectAt(p, u, v); if (!hit) return; (p.faces = p.faces || []).push(hit); }
+        const {k, l} = focusLevelOf(hit, lv), nl = (l + 1) % 3;
+        if (hit.d){ const key = k || hit.d; if (nl) lv[key] = nl; else delete lv[key]; delete hit.fo; }
+        else { if (nl) hit.fo = nl; else delete hit.fo; }
+        p.pv = p.pv || PPL_VER; DB.put('photos', p).catch(() => {});
+        if (cur === p) overlay();
+        toast(nl ? (nl > 1 ? '★★ מודגש מאוד' : '★ מודגש') + (hit.d ? ' – בכל התמונות שלו' : ' – בתמונה הזו') : 'ההדגשה בוטלה', 1600);
+      }, 480), x0, y0};
+    });
+    const cancel = e => { if (lp && (e.type !== 'pointermove' || Math.hypot(e.clientX - lp.x0, e.clientY - lp.y0) > 10)){ clearTimeout(lp.t); lp = null; } };
+    s.addEventListener('pointermove', cancel); s.addEventListener('pointerup', cancel); s.addEventListener('pointercancel', cancel);
+    s.addEventListener('contextmenu', e => e.preventDefault());
+    s.onclick = e => { const a = e.target.closest('[data-a]'); if (a){ if (a.dataset.a === 'x') return close(); if (a.dataset.a === 'back') return grid(); }
+      const b = e.target.closest('[data-i]'); if (b) open(+b.dataset.i); };
+    grid(); document.body.appendChild(s);
+  });
 }
 /* כפתור בעמוד האלבום */
 async function starButton(){
@@ -5550,6 +5680,7 @@ async function startScenes(){
   SC.active = true; let changed = 0;
   for (const p of todo){
     if (!S.project || !S.photos.includes(p)) continue;
+    if (p.scm){ p.scv = sig; continue; } // סומן ידנית – לא דורסים
     try{
       if (!p.se){ const b = await DB.get('thumbs', p.id); if (b){ const c = await sceneCanvas(b); p.se = qE(await emb.embed(c)); c.width = c.height = 1; } }
       if (p.se){ const r = classifyScene(dqE(p.se)); const old = p.scene; p.scene = r ? r.label : null; p.scc = r ? r.conf : 0; if (old !== p.scene) changed++; }
@@ -5562,8 +5693,35 @@ async function startScenes(){
 }
 function sceneCount(){ return S.photos.filter(p => p.scene).length; }
 
+/* סימון מהיר: הרגעים באירוע (לפי שעה ומקום) – בוחרים לכל רגע מה קרה בו. כל תמונות הרגע מקבלות את הסוג,
+   וכמה מהן נשמרות כדוגמאות, כך שהמערכת לומדת ומזהה לבד באלבומים הבאים */
+async function sceneQuickDialog(){
+  const ses = sessionize(albumPhotos()).filter(r => r.items.length);
+  if (!ses.length){ toast('אין תמונות באלבום'); return false; }
+  const pick = ses.map(r => { const c = {}; r.items.forEach(p => { if (p.scene) c[p.scene] = (c[p.scene] || 0) + 1; }); const t = Object.entries(c).sort((a, b) => b[1] - a[1])[0]; return t ? t[0] : ''; });
+  const s = document.createElement('div'); s.className = 'scrim modal-scrim';
+  s.innerHTML = `<div class="modal"><h3>מה קרה בכל רגע?</h3><p style="font-size:13.5px">המערכת חילקה את התמונות לרגעים לפי שעה ומקום. בחרו לכל רגע מה קורה בו – וכל רגע יקבל כותרת פרק ועיצוב מתאים. אפשר לדלג על רגעים.</p>
+    <div class="sq-list">${ses.map((r, i) => { const th = [0, .5, .99].map(f => r.items[Math.floor(f * (r.items.length - 1))]); return `<div class="sq-row"><div class="sq-th">${th.map(p => `<img data-id="${p.id}" alt="">`).join('')}</div>
+      <div class="sq-sel"><small>רגע ${i + 1} · ${r.items.length} תמונות</small><select data-i="${i}"><option value="">– דלג –</option>${Object.entries(SCENES).map(([k, n]) => `<option value="${k}"${pick[i] === k ? ' selected' : ''}>${n}</option>`).join('')}</select></div></div>`; }).join('')}</div>
+    <div class="acts" style="margin-top:12px"><button class="btn ghost" data-a="x">ביטול</button><button class="btn" data-a="ok">שמירה</button></div></div>`;
+  document.body.appendChild(s);
+  s.querySelectorAll('.sq-th img').forEach(im => thumbURL(im.dataset.id).then(u => { if (u) im.src = u; }));
+  const ok = await new Promise(res => { s.onclick = e => { const a = e.target.closest('[data-a]'); if (a){ s.remove(); res(a.dataset.a === 'ok'); } }; });
+  if (!ok) return false;
+  const sel = [...s.querySelectorAll('select')].map(x => x.value); let n = 0;
+  const emb = await embInit().catch(() => null), ex = [];
+  ses.forEach((r, i) => { if (!sel[i]) return; n++;
+    r.items.forEach(p => { p.scene = sel[i]; p.scc = 1; p.scm = 1; DB.put('photos', p).catch(() => {}); });
+    r.items.filter((p, j) => j % Math.max(1, Math.floor(r.items.length / 3)) === 0).slice(0, 3).forEach(p => ex.push([p, sel[i]])); });
+  if (!n) return false;
+  if (emb){ await libLoad(); const have = new Set(LIB.items.map(i => i.e)); // דוגמאות ללימוד – נשמרות במכשיר (ובמסך הלימוד אפשר לייצא לכל המשתמשים)
+    for (const [p, label] of ex){ try{ if (!p.se){ const b = await DB.get('thumbs', p.id); if (b){ const c = await sceneCanvas(b); p.se = qE(await emb.embed(c)); c.width = c.height = 1; DB.put('photos', p).catch(() => {}); } }
+      if (p.se && !have.has(p.se)){ LIB.items.push({kind:'scene', label, e:p.se, auto:1}); have.add(p.se); } }catch(_){} }
+    libSave().catch(() => {}); }
+  return true;
+}
 $('scSw').onclick = async () => {
-  if (!S.project.sceneTitles && !sceneCount()){ if (!document.querySelector('.toast')) toast('כותרות פרק עדיין לא זמינות – המערכת לא זיהתה סוגי תמונות באלבום הזה'); return; } // לא מדליקים מתג שלא עושה כלום
+  if (!S.project.sceneTitles && !sceneCount()){ if (!await sceneQuickDialog()) return; } // עוד אין סוגי תמונות – סימון מהיר של הרגעים
   S.project.sceneTitles = !S.project.sceneTitles; touchProject(); updDesignRow();
   if (PV.plan){ PV.plan.spreads = replanKeepCustom(PV.plan.spreads, PV.plan.seed); savePlan(); buildStrip(); showSpread(PV.cur = 0); } };
 
