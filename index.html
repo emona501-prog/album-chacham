@@ -1794,7 +1794,7 @@ function photoNeed(id){
   return Math.min(n, 12) * .28 + clamp(.07 / Math.max(minW, .01), 0, 4) * .35 + (n >= 4 ? spread * .8 : 0) + (m.star ? .5 : 0) + (m.fw || 0) * 1.1 + (id === PEAK_ID ? 1.2 : 0);
 }
 function sizeByPeople(L){
-  const ph = L.items.filter(i => i.t === 'photo' && META.get(i.id));
+  const ph = L.items.filter(i => i.t === 'photo' && META.get(i.id) && !i.bgTile && !i.cands && !i.grp);
   if (ph.length < 2) return;
   const area = i => i.w * i.h, maxA = Math.max(...ph.map(area)), minA = Math.min(...ph.map(area));
   if (maxA < minA * 1.5) return; // כל המשבצות בערך באותו גודל
@@ -1827,6 +1827,7 @@ function layoutSpread0(sp){
   if (sp.fam !== 'title' && sp.fam !== 'tpl'){ PEAK_ID = sp.hero || null; try{ sizeByPeople(L); } finally{ PEAK_ID = null; } } // תמונה עם הרבה אנשים מקבלת משבצת גדולה
   if (typeof isLTR === 'function' && isLTR()){ mirrorItems(L.items, G.W); mirrorBg(L.bg); }
   if (typeof applyFaces === 'function') applyFaces(L);
+  if (typeof proOverlay === 'function') proOverlay(L); // תמונות שמונחות מעל – לא מסתירות ראשים
   if (typeof applyGlobalBg === 'function'){ CUR_SP_INDEX = PV.plan ? Math.max(0, PV.plan.spreads.indexOf(sp)) : 0; applyGlobalBg(L); }
   if (sp.fam === 'title' && typeof autoDeco === 'function') autoDeco(L, 'title');
   if (typeof autoEls === 'function') autoEls(L, sp, CUR_SP_INDEX);
@@ -2083,6 +2084,7 @@ function drawPhotoItem(ctx, it, k, ox, img){
     ctx.save(); setShadow(ctx, it, k);
     ctx.fillStyle = b > 0 ? it.borderColor : '#2b2b2b'; shapePath(ctx, shape, w, h); ctx.fill();
     ctx.restore();
+    if (it.frame && b > 0 && typeof drawFrame3D === 'function') drawFrame3D(ctx, it.frame, shape, w, h, b, it.id); // מסגרת תלת-ממד
   }
   ctx.save(); ctx.translate(0, cy); shapePath(ctx, shape, iw, ih); ctx.clip();
   if (img){
@@ -2091,6 +2093,8 @@ function drawPhotoItem(ctx, it, k, ox, img){
     const dw = circ ? Math.min(iw, ih) : iw, dh = circ ? Math.min(iw, ih) : ih;
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(img, s.sx, s.sy, s.sw, s.sh, -dw/2, -dh/2, dw, dh);
+    if (it.mono){ ctx.globalCompositeOperation = 'saturation'; ctx.fillStyle = '#808080'; ctx.fillRect(-iw/2, -ih/2, iw, ih); ctx.globalCompositeOperation = 'source-over'; } // שחור-לבן
+    if (it.veil){ ctx.fillStyle = `rgba(255,255,255,${it.veil})`; ctx.fillRect(-iw/2, -ih/2, iw, ih); }
   } else { ctx.fillStyle = '#D9D1C5'; ctx.fillRect(-iw/2, -ih/2, iw, ih); }
   if (it.vignette){ // הכהיה עדינה בשוליים
     const r = Math.hypot(iw, ih)/2, gr = ctx.createRadialGradient(0, 0, r*.45, 0, 0, r);
@@ -3652,13 +3656,18 @@ function edAction(a, btn){
         <div class="ed-row"><span>צל</span><input type="range" min="0" max="1" step=".01" class="ed-rg" id="rS"></div>
         <div class="ed-row"><span>סוג צל</span><div class="ed-chips">${[['soft', 'רך'], ['hard', 'חד'], ['long', 'ארוך'], ['float', 'מרחף']].map(([v, n]) => `<button data-ss="${v}" class="${(it.shStyle || 'soft') === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         <div class="ed-row"><span>זוהר</span><div class="ed-chips"><button data-gl="none">בלי</button><button data-gl="gold">זהב</button><button data-gl="white">לבן</button></div></div>
+        <div class="ed-row"><span>מסגרת תלת־ממד</span><div class="ed-chips">${[['', 'בלי'], ['silver', 'כסף'], ['gold', 'זהב'], ['wood', 'עץ']].map(([v, n]) => `<button data-f3="${v}" class="${(it.frame || '') === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
+        <div class="ed-row"><span></span><button class="mini" data-f3all="1">החלה על כל התמונות בכפולה</button></div>
         <div class="ed-row"><span>מסגרת פולארויד</span><button class="switch ${it.borderB ? 'on' : ''}" data-pol="1"></button></div>
         <div class="ed-row"><span>עיטור זהב<br><small style="opacity:.7">חד בדפוס</small></span><div class="ed-chips">${[['', 'בלי'], ['v:rf-baroque', 'בארוק'], ['v:rf-euca1', 'אקליפטוס'], ['v:rf-euca2', 'אקליפטוס עשיר'], ['v:rf-roses', 'ורדים'], ['v:rf-silver', 'בארוק כסף'], ['v:rf-deco', 'ארט דקו'], ['v:rf-navy', 'דקו כחול'], ['v:fr-ornate', 'מעוטרת'], ['v:fr-classic', 'קלאסית'], ['v:fr-leaf', 'עלים'], ['v:fr-deco', 'קווי דקו'], ['v:cr-scroll', 'פינות']].map(([v, n]) => `<button data-vf="${v}" class="${(edItems().find(o => o.t === 'el' && o.of === it.id && String(o.el).startsWith('v:')) || {el:''}).el === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>`, P => {
         slider(P, '#rB', () => it.border || 0, v => { it.border = v; if (it.borderB) it.borderB = v * 2.6; });
         slider(P, '#rS', () => it.shadow || 0, v => { it.shadow = v; it.glow = null; });
         bindSwatches(P, 'swB', c => { it.borderColor = c; if (!it.border) it.border = 1.2; });
         P.addEventListener('click', e => {
-          const g = e.target.closest('[data-gl]'), pl = e.target.closest('[data-pol]'), ss = e.target.closest('[data-ss]'), vf = e.target.closest('[data-vf]');
+          const g = e.target.closest('[data-gl]'), pl = e.target.closest('[data-pol]'), ss = e.target.closest('[data-ss]'), vf = e.target.closest('[data-vf]'), f3 = e.target.closest('[data-f3]'), f3a = e.target.closest('[data-f3all]');
+          const setF3 = (x, st) => { if (!st){ delete x.frame; if (x.glow && /232,190|212,170/.test(x.glow)) x.glow = null; return; } const o = frameOpts(st, edGeo()); x.frame = st; x.border = Math.max(x.border || 0, o.border); x.borderColor = o.borderColor; x.shadow = Math.max(x.shadow || 0, .6); x.glow = o.glow; x.soft = 0; delete x.borderB; };
+          if (f3){ pushUndo(); setF3(it, f3.dataset.f3); P.querySelectorAll('[data-f3]').forEach(x => x.classList.toggle('on', x === f3)); commit(); edRender(); return; }
+          if (f3a){ pushUndo(); edItems().forEach(x => { if (x.t === 'photo' && !x.film && !x.bgTile && !(x.w > edGeo().pw * 1.2)) setF3(x, it.frame || ''); }); commit(); edRender(); toast('המסגרת הוחלה על כל התמונות בכפולה'); return; }
           if (vf){ pushUndo(); const its = edItems(); if (vf.dataset.vf && !it.rot) vFitPhoto(it, vf.dataset.vf, edGeo()); vWrapPhoto(its, it, vf.dataset.vf); ED.sel = its.indexOf(it); P.querySelectorAll('[data-vf]').forEach(x => x.classList.toggle('on', x === vf)); commit(); edRender(); return; }
           if (ss){ pushUndo(); it.shStyle = ss.dataset.ss; it.glow = null; if (!(it.shadow > 0)){ it.shadow = .6; P.querySelector('#rS').value = .6; } P.querySelectorAll('[data-ss]').forEach(x => x.classList.toggle('on', x === ss)); commit(); edRender(); }
           if (g){ pushUndo(); it.glow = g.dataset.gl === 'none' ? null : g.dataset.gl === 'gold' ? 'rgba(212,170,90,.9)' : 'rgba(255,255,255,.95)'; commit(); edRender(); }
@@ -7081,6 +7090,223 @@ function restorePicker(){
   const i = document.createElement('input'); i.type = 'file'; i.accept = '.albumzip,.zip,application/zip';
   i.onchange = () => { if (i.files[0]) restoreBackup(i.files[0]); }; i.click();
 }
+
+/* =========================================================
+   שלב 24 – עיצובים ברמת מעצב: תמונה ראשית כרקע, רקע שחור-לבן עם פס צבעוני, פסיפס ריקודים,
+   מסגרות תלת-ממד, שם בכתב יד, פילם מתעקל, פורטרט וגלריה
+   ========================================================= */
+
+/* ---------- מסגרות תלת-ממד: כסף, זהב, עץ כהה ---------- */
+const FRAME3D = {
+  silver:{n:'כסף', base:'#B9BDC3', light:'#F4F6F8', dark:'#5E636A', line:'#2A2D31'},
+  gold:  {n:'זהב', base:'#B8913F', light:'#F3DA94', dark:'#6E5019', line:'#3A2A0C', glow:'rgba(232,190,100,.85)'},
+  wood:  {n:'עץ', base:'#4B2F1D', light:'#86593A', dark:'#1E120A', line:'#120A05', grain:1},
+};
+/* מצייר את שולי המסגרת בצורת "מסגרת אמיתית": ארבעה צדדים מוטים (אור מלמעלה-שמאל), קו פנימי כהה */
+function drawFrame3D(ctx, st, shape, w, h, b, seed){
+  const F = FRAME3D[st]; if (!F || b <= 0) return;
+  ctx.save();
+  if (shape !== 'rect' && shape !== 'rounded'){ // צורה מיוחדת: טבעת עם מעבר אור
+    const g = ctx.createLinearGradient(-w/2, -h/2, w/2, h/2); g.addColorStop(0, F.light); g.addColorStop(.5, F.base); g.addColorStop(1, F.dark);
+    ctx.beginPath(); shapePath(ctx, shape, w, h); shapePath(ctx, shape, w - 2*b, h - 2*b); ctx.fillStyle = g; ctx.fill('evenodd'); ctx.restore(); return;
+  }
+  const X0 = -w/2, Y0 = -h/2, X1 = w/2, Y1 = h/2, x0 = X0 + b, y0 = Y0 + b, x1 = X1 - b, y1 = Y1 - b;
+  const side = (pts, c1, c2, gx0, gy0, gx1, gy1) => { const g = ctx.createLinearGradient(gx0, gy0, gx1, gy1); g.addColorStop(0, c1); g.addColorStop(1, c2);
+    ctx.beginPath(); ctx.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i+1]); ctx.closePath(); ctx.fillStyle = g; ctx.fill(); };
+  side([X0, Y0, X1, Y0, x1, y0, x0, y0], F.light, F.base, 0, Y0, 0, y0);          // עליון – מואר
+  side([X0, Y0, x0, y0, x0, y1, X0, Y1], F.light, F.base, X0, 0, x0, 0);          // שמאל
+  side([X0, Y1, x0, y1, x1, y1, X1, Y1], F.dark, F.base, 0, Y1, 0, y1);           // תחתון – מוצל
+  side([X1, Y0, X1, Y1, x1, y1, x1, y0], F.dark, F.base, X1, 0, x1, 0);           // ימין
+  if (F.grain){ // סיבי עץ עדינים
+    let s = 0; for (const ch of String(seed || 'x')) s = (s * 31 + ch.charCodeAt(0)) >>> 0;
+    const R = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+    ctx.save(); ctx.beginPath(); ctx.rect(X0, Y0, w, h); ctx.rect(x0, y0, x1 - x0, y1 - y0); ctx.clip('evenodd');
+    ctx.strokeStyle = 'rgba(0,0,0,.22)'; ctx.lineWidth = Math.max(.6, b * .05);
+    for (let i = 0; i < 26; i++){ const t = R(); ctx.beginPath();
+      if (i % 2){ const yy = Y0 + t * h; ctx.moveTo(X0, yy); ctx.bezierCurveTo(X0 + w*.3, yy + b*.2*(R() - .5), X0 + w*.7, yy - b*.2*(R() - .5), X1, yy); }
+      else { const xx = X0 + t * w; ctx.moveTo(xx, Y0); ctx.bezierCurveTo(xx + b*.2*(R() - .5), Y0 + h*.3, xx - b*.2*(R() - .5), Y0 + h*.7, xx, Y1); }
+      ctx.stroke(); }
+    ctx.restore();
+  }
+  ctx.lineWidth = Math.max(.6, b * .07); ctx.strokeStyle = F.line; ctx.strokeRect(x0, y0, x1 - x0, y1 - y0);                 // קו פנימי כהה – עומק
+  ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = Math.max(.5, b * .04); ctx.strokeRect(X0 + ctx.lineWidth/2, Y0 + ctx.lineWidth/2, w - ctx.lineWidth, h - ctx.lineWidth); // ברק בקצה החיצוני
+  ctx.restore();
+}
+const frameOpts = (st, G, mul = 1) => { const F = FRAME3D[st]; return {frame:st, border:Math.max(1.6, 2.4 * Math.max(.6, G.s)) * mul, borderColor:F.base, shadow:.75, glow:F.glow || null}; };
+
+/* ---------- מניעת הסתרת פנים: תמונות "מונחות מעל" זזות למקום שבו אין ראש מתחתיהן ---------- */
+function headRectsOnSpread(it){
+  const m = META.get(it.id); if (!m || typeof headBoxes !== 'function') return [];
+  const b = it.border || 0, iw = it.w - 2*b, ih = it.h - 2*b; if (iw <= 0 || ih <= 0) return [];
+  const s = coverRect(m.width, m.height, iw / ih, it.fx ?? .5, it.fy ?? .4, it.zoom);
+  return headBoxes(m).map(([a, c, d, e]) => { const X = v => it.x + b + ((v * m.width - s.sx) / s.sw) * iw, Y = v => it.y + b + ((v * m.height - s.sy) / s.sh) * ih;
+    return {x:X(a), y:Y(c), w:X(d) - X(a), h:Y(e) - Y(c)}; }).filter(r => r.w > 0 && r.h > 0);
+}
+const rOver = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+function proOverlay(L){
+  const G = L.G, ltr = typeof isLTR === 'function' && isLTR();
+  for (const it of L.items) if (it.t === 'photo' && it.fade && !it.grp){ // קצה דהוי לא עובר על ראש
+    const hr = headRectsOnSpread(it); if (!hr.length) continue; const left = it.fade.edge === 'left';
+    const room = left ? Math.min(...hr.map(r => r.x)) - it.x : it.x + it.w - Math.max(...hr.map(r => r.x + r.w));
+    it.fade.len = clamp(Math.min(it.fade.len, room - 3), Math.min(it.fade.len, G.W * .025), it.fade.len); }
+  { const fl = L.items.filter(i => i.grp === 'film').sort((a, b) => a.pi - b.pi), pa = fl.length && fl[0].path; // אחרי שמירת הראשים הרוחב משתנה – מחברים את הרצועה מחדש
+    if (pa){ const ws = fl.map(i => i.w + 2*pa.pad - .3), tot = ws.reduce((a, b) => a + b, 0); let cum = 0;
+      fl.forEach((it, i) => { const t = cum + ws[i]/2; cum += ws[i]; let cx, cy, ang;
+        if (pa.diag){ const d = t - tot/2; ang = pa.a; cx = G.W/2 + Math.cos(ang) * d; cy = G.H/2 + Math.sin(ang) * d; }
+        else { const x0 = pa.x1 - tot, ph = t / tot * Math.PI * 1.6; cx = x0 + t; cy = pa.y0 + Math.sin(ph) * pa.amp; ang = Math.atan(Math.cos(ph) * pa.amp * Math.PI * 1.6 / tot); }
+        if (ltr) cx = G.W - cx;
+        it.x = cx - it.w/2; it.y = cy - it.h/2; it.rot = (ltr ? -1 : 1) * ang * 180 / Math.PI; });
+      delete fl[0].path; } }
+  const grp = L.items.filter(i => i.grp && i.gc);
+  if (grp.length){ // קבוצה (רצועת פילם) זזה יחד – למקום שבו היא לא מכסה ראשים
+    const under = L.items.filter(i => i.t === 'photo' && !i.grp).flatMap(headRectsOnSpread);
+    const offs = grp[0].gc; let best = null;
+    for (const o of offs){ const bad = grp.reduce((a, it) => a + under.reduce((b, hr) => b + rOver({x:it.x + (ltr ? -o.dx : o.dx) - 2, y:it.y + o.dy - it.h*.2, w:it.w + 4, h:it.h*1.4}, hr) / Math.max(1, hr.w * hr.h), 0), 0);
+      if (!best || bad < best.bad - 1e-6) best = {bad, o}; }
+    grp.forEach(it => { it.x += ltr ? -best.o.dx : best.o.dx; it.y += best.o.dy; delete it.gc; });
+  }
+  const ov = L.items.filter(i => i.cands); if (!ov.length) return;
+  const heads = L.items.filter(i => i.t === 'photo' && !i.cands).flatMap(headRectsOnSpread);
+  const placed = [];
+  for (const it of ov){
+    const cs = it.cands.map(c => ({x:ltr ? G.W - c.x - it.w : c.x, y:c.y}));
+    let best = null;
+    for (const sc of [1, .85, .72]) for (const c of cs){
+      const w = it.w * sc, h = it.h * sc, r = {x:c.x + (it.w - w)/2, y:c.y + (it.h - h)/2, w, h};
+      const bad = heads.reduce((a, hr) => a + rOver(r, hr) / Math.max(1, hr.w * hr.h), 0) * 10 + placed.reduce((a, p) => a + rOver(r, p) / (w * h), 0) * 2 + (1 - sc) * .6;
+      if (!best || bad < best.bad) best = {bad, r};
+      if (bad < .01) break;
+    }
+    if (best){ Object.assign(it, best.r); placed.push(best.r); }
+    delete it.cands;
+  }
+}
+
+/* ---------- 1. תמונה ראשית שהיא הרקע (נמסה לצד השני) + תמונות במסגרות ---------- */
+function genHeroBleed(ids, G, v){
+  const T = G.T, hs = v % 2 ? 'L' : 'R', dark = (v >> 1) % 2 === 0, fanStyle = v >= 4;
+  const W = G.W, hw = W * .64;
+  ids = pickBest(ids, hw / G.H); const hero = ids[0]; let rest = ids.slice(1);
+  const bgc = dark ? T.dark : T.bg, items = [];
+  const hx = hs === 'R' ? W - hw : -G.B;
+  items.push(P(hero, {x:hx, y:-G.B, w:hw + G.B, h:G.H + 2*G.B}, T, {border:0, shadow:0, vignette:0, fade:{edge:hs === 'R' ? 'left' : 'right', len:W * .13, color:bgc}}));
+  const st = dark ? 'gold' : 'silver';
+  const ovN = !fanStyle && rest.length >= 4 ? 2 : 0, ovIds = pickBest(rest, 1.4, ovN).slice(0, ovN); rest = rest.filter(i => !ovIds.includes(i));
+  const freeW = W - hw + W * .05, r = inset(hs === 'R' ? {x:0, y:0, w:freeW, h:G.H} : {x:W - freeW, y:0, w:freeW, h:G.H}, G.m * 1.1);
+  if (fanStyle){ // שורת תמונות מוטות כמו מניפה + תמונה רחבה מתחת
+    const k = Math.max(1, rest.length - (rest.length >= 4 ? 1 : 0)), fanIds = rest.slice(0, k), bot = rest.slice(k);
+    const fa = bot.length ? {x:r.x, y:r.y, w:r.w, h:r.h * .52} : r; let ih = fa.h * .92, iw = ih * .74;
+    if (iw * (k * .82 + .18) > fa.w){ iw = fa.w / (k * .82 + .18); ih = iw / .74; }
+    const step = k > 1 ? (fa.w - iw) / (k - 1) : 0, rots = [-7, 5, -3, 6, -5, 4];
+    fanIds.forEach((id, i) => items.push(P(id, {x:fa.x + fa.w - iw - i*step, y:fa.y + (fa.h - ih)/2, w:iw, h:ih}, T, Object.assign(frameOpts(st, G, .7), {rot:rots[i % 6]}))));
+    if (bot.length) justify(bot, {x:r.x, y:r.y + r.h * .58, w:r.w, h:r.h * .42}, G.g * 1.4).forEach((c, i) => items.push(P(bot[i], c, T, frameOpts(st, G))));
+  } else justify(rest, r, G.g * 1.6).forEach((c, i) => items.push(P(rest[i], c, T, frameOpts(st, G))));
+  // שתי תמונות קטנות "מונחות" על התמונה הראשית – בפינה התחתונה, במקום שאין בו ראשים
+  const pw = Math.min(hw * .26, G.H * .42);
+  ovIds.forEach((id, i) => { const ar = clamp(asp(id), .8, 1.6), w = pw, h = w / ar, o = hs === 'R' ? 1 : -1;
+    const xs = hs === 'R' ? [W - G.m - w, W - G.m - w*1.7, W - hw + W*.1, W - hw*.55] : [G.m, G.m + w*.7, hw - W*.1 - w, hw*.55 - w];
+    const cands = []; for (const y of [G.H - G.m - h - i * h * .45, G.m + i * h * .3, G.H*.5 - h/2]) for (const x of xs) cands.push({x:x - o * i * w * .55, y});
+    items.push(Object.assign(P(id, {x:cands[0].x, y:cands[0].y, w, h}, T, Object.assign(frameOpts(st, G, .55), {rot:(i ? -6 : 5) * o})), {cands}));
+  });
+  return {bg:dark ? {type:'radial', c1:T.dark2, c2:T.dark} : {type:'solid', color:T.bg}, items};
+}
+
+/* ---------- 2. רקע שחור-לבן מאותן תמונות + פס תמונות צבעוניות במסגרות ---------- */
+function genMonoBand(ids, G, v){
+  const T = G.T, items = [], n = ids.length, st = v % 2 ? 'wood' : 'silver';
+  const tiles = pickBest(ids, (G.W / 4) / G.H, 4).slice(0, 4);
+  const tw = (G.W + 2*G.B) / 4;
+  tiles.forEach((id, i) => items.push(P(id, {x:-G.B + i * tw, y:-G.B, w:tw + .2, h:G.H + 2*G.B}, T, {border:0, shadow:0, vignette:0, mono:1, veil:.38, bgTile:1})));
+  items.push({t:'rect', x:-G.B, y:G.H * .16, w:G.W + 2*G.B, h:G.H * .68, fill:'rgba(255,255,255,.18)'});
+  const by = G.H * .2, bh = G.H * .6, half = n / 2, gap = G.g * 1.1;
+  ['R', 'L'].forEach((side, si) => { const part = ids.slice(si * half, si * half + half), r = inset(page(side, G), G.m * .8, 0);
+    const cw = (r.w - gap * (part.length - 1)) / part.length;
+    part.forEach((id, i) => items.push(P(id, {x:r.x + r.w - (i + 1) * cw - i * gap, y:by, w:cw, h:bh}, T, frameOpts(st, G, .8)))); });
+  return {bg:{type:'solid', color:'#DDDDDD'}, items};
+}
+
+/* ---------- 3. פסיפס ריקודים: הרבה תמונות, ורקע מטושטש של האירוע מציץ ביניהן ---------- */
+function genDanceMosaic(ids, G, v){
+  const T = G.T, items = [], half = Math.ceil(ids.length / 2), glow = v % 2;
+  const hero = pickBest(ids, G.W / G.H)[0];
+  ['R', 'L'].forEach((side, si) => { const part = si ? ids.slice(half) : ids.slice(0, half), r = inset(page(side, G), G.m * .55);
+    justify(part, r, G.g * 1.1).forEach((c, i) => items.push(P(part[i], c, T, {border:.6, borderColor:glow ? '#E8C27A' : '#0E0E12', shadow:.7, glow:glow ? 'rgba(232,190,110,.55)' : null, vignette:0}))); });
+  return {bg:{type:'blur', id:hero, overlay:'rgba(14,16,30,.45)'}, items};
+}
+
+/* ---------- 5. שם בכתב יד בתוך רשת על רקע שחור ---------- */
+function genScriptName(ids, G, v){
+  const T = G.T, items = [], hs = v % 2 ? 'L' : 'R', os = opp(hs);
+  const name = String(S.project.name || '').trim().split(/\s+/).filter(w => !/^(חוגג|חוגגת|בר|בת|מצווה|מצוה|לבר|לבת|חתונת|של)$/.test(w)).slice(0, 2).join(' ') || spreadWord();
+  ids = pickBest(ids, (G.pw * .5) / G.H); const hero = ids[0], rest = ids.slice(1);
+  const nTop = Math.ceil(rest.length / 2), top = rest.slice(0, nTop), bot = rest.slice(nTop);
+  const r = inset(page(hs, G), G.m * .6), bandH = r.h * .3, rowH = (r.h - bandH - G.g * 2) / 2;
+  const rowFill = (part, rr) => { const a = part.map(id => clamp(asp(id), .7, 1.6)), sa = a.reduce((x, y) => x + y, 0), ww = rr.w - G.g * (part.length - 1); let x = rr.x + rr.w;
+    part.forEach((id, i) => { const w = ww * a[i] / sa; x -= w; items.push(P(id, {x, y:rr.y, w, h:rr.h}, T, {border:0, shadow:0})); x -= G.g; }); };
+  rowFill(top, {x:r.x, y:r.y, w:r.w, h:rowH}); rowFill(bot, {x:r.x, y:r.y + rowH + bandH + G.g * 2, w:r.w, h:rowH});
+  if (name) items.push({t:'text', x:r.x, y:r.y + rowH + G.g, w:r.w, h:bandH, text:name, font:'"Amatic SC"', weight:700, size:bandH * .78, color:'#FFFFFF'});
+  items.push(P(hero, inset(page(os, G), G.m * .6), T, {border:0, shadow:0}));
+  return {bg:{type:'solid', color:'#050505'}, items};
+}
+
+/* ---------- 6. פילם מתעקל / אלכסוני מעל תמונה גדולה ---------- */
+function genFilmCurve(ids, G, v){
+  const T = G.T, items = [], diag = v % 2;
+  ids = pickBest(ids, G.W / G.H); const hero = ids[0], strip = ids.slice(1);
+  const hero2 = strip.length >= 5 ? pickBest(strip, G.pw / G.H)[0] : null; const sIds = pickBest(strip.filter(i => i !== hero2), 1.42, 99);
+  if (hero2){ items.push(P(hero, bleedPage('R', G), T, {border:0, shadow:0})); items.push(P(hero2, bleedPage('L', G), T, {border:0, shadow:0})); }
+  else items.push(P(hero, {x:-G.B, y:-G.B, w:G.W + 2*G.B, h:G.H + 2*G.B}, T, {border:0, shadow:0}));
+  const k = sIds.length, fh = G.H * (diag ? .2 : .19), fw = fh * 1.42, pad = Math.max(fh * .04, 2.4), step = fw + 2*pad - .3;
+  const len = step * k;
+  sIds.forEach((id, i) => {
+    let cx, cy, ang;
+    if (diag){ const a = (hero2 ? 62 : 28) * Math.PI / 180, t = (i - (k - 1) / 2) * step; ang = a; cx = G.W/2 + Math.cos(a) * t; cy = G.H/2 + Math.sin(a) * t; } // אלכסון שחוצה את הקיפול – בין שתי התמונות
+    else { const x0 = G.W - G.m - len, t = x0 + (i + .5) * step, ph = (t - x0) / len * Math.PI * 1.6, amp = G.H * .07;
+      cx = t; cy = G.H * .2 + Math.sin(ph) * amp; ang = Math.atan(Math.cos(ph) * amp * Math.PI * 1.6 / len); }
+    const it = P(id, {x:cx - fw/2, y:cy - fh/2, w:fw, h:fh}, T, {border:0, shadow:0, film:true, rot:ang * 180 / Math.PI, grp:'film', pi:i});
+    if (!i) it.path = {diag, a:(hero2 ? 62 : 28) * Math.PI / 180, pad, x1:G.W - G.m, amp:G.H * .07, y0:G.H * .2};
+    if (!i) it.gc = diag ? [-.3, -.18, 0, .18, .3].flatMap(f => [{dx:f * G.W * .5, dy:0}]) : [0, .3, .55].map(f => ({dx:0, dy:f * G.H}));
+    items.push(it);
+  });
+  return {bg:{type:'solid', color:T.dark}, items};
+}
+
+/* ---------- 7. פורטרט גבוה + גלריה בפס כהה עם הילה זהובה ---------- */
+function genPortraitGallery(ids, G, v){
+  const T = G.T, items = [], hs = v % 2 ? 'L' : 'R', os = opp(hs);
+  ids = pickBest(ids, G.pw * .62 / G.H); const hero = ids[0], rest = ids.slice(1);
+  const pr = page(hs, G), heroW = Math.min(pr.w * .78, G.H * .8 * 1.1);
+  const hx = hs === 'R' ? G.W - G.m * .6 - heroW : G.m * .6;
+  items.push(P(hero, {x:hx, y:G.m * .6, w:heroW, h:G.H - G.m * 1.2}, T, frameOpts('silver', G, .5)));
+  const bx = hs === 'R' ? -G.B : hx + heroW + G.g * 2, bw = hs === 'R' ? hx - G.g * 2 + G.B : G.W + G.B - bx;
+  const band = {x:bx, y:G.H * .1, w:bw, h:G.H * .8};
+  items.push({t:'rect', x:band.x, y:band.y, w:band.w, h:band.h, fill:'#0B0B0C'});
+  items.push({t:'rect', x:band.x, y:band.y - 1.2, w:band.w, h:.5, fill:T.accent});
+  items.push({t:'rect', x:band.x, y:band.y + band.h + .7, w:band.w, h:.5, fill:T.accent});
+  const area = inset(band, G.m * .9, G.m * .7), ftL = hs === 'R' ? {x:area.x + G.B, y:area.y, w:area.w - G.B, h:area.h} : {x:area.x, y:area.y, w:area.w - G.B, h:area.h};
+  // הגלריה לא חוצה את קו הקיפול עם תמונה: מחלקים לשני חלקים לפי הקיפול אם צריך
+  const sides = [ftL].flatMap(r => (r.x < G.pw && r.x + r.w > G.pw) ? [{x:r.x, y:r.y, w:G.pw - r.x - G.g, h:r.h}, {x:G.pw + G.g, y:r.y, w:r.x + r.w - G.pw - G.g, h:r.h}] : [r]).filter(r => r.w > 15);
+  const tot = sides.reduce((a, r) => a + r.w, 0); let at = 0;
+  sides.forEach((r, si) => { const cnt = si === sides.length - 1 ? rest.length - at : Math.round(rest.length * r.w / tot); const part = rest.slice(at, at + cnt); at += cnt;
+    justify(part, r, G.g * 1.6).forEach((c, i) => items.push(P(part[i], c, T, {border:.6, borderColor:'#E3C27A', shadow:0, glow:'rgba(232,190,100,.8)'}))); });
+  return {bg:{type:'linear', c1:'#F2F2F2', c2:'#9A9A9A', vertical:true}, items};
+}
+
+Object.assign(FAMS, {
+  heroBleed:      {min:3, max:9,  vars:6, gen:genHeroBleed,       w:2, name:'תמונה ראשית כרקע'},
+  monoBand:       {min:4, max:8,  vars:2, gen:genMonoBand,        w:1, name:'שחור-לבן ופס צבעוני', even:true},
+  danceMosaic:    {min:10, max:20, vars:2, gen:genDanceMosaic,    w:1, name:'פסיפס ריקודים'},
+  scriptName:     {min:5, max:9,  vars:2, gen:genScriptName,      w:0, name:'שם בכתב יד'},
+  filmCurve:      {min:4, max:7,  vars:2, gen:genFilmCurve,       w:1, name:'פילם מתעקל'},
+  portraitGallery:{min:5, max:11, vars:2, gen:genPortraitGallery, w:1, name:'פורטרט וגלריה'},
+});
+HERO_FAMS.push('heroBleed', 'portraitGallery');
+Object.assign(PEAK_FAMS, {heroBleed:3, portraitGallery:2});
+{ const add = (P0, o) => { for (const k in o) if (P0[k]) Object.assign(P0[k].fams, o[k]); };
+  add(CAT_PLAN, {portrait:{heroBleed:4, monoBand:2, portraitGallery:2, filmCurve:1}, group:{heroBleed:3, monoBand:1, portraitGallery:1},
+    event:{danceMosaic:2, heroBleed:2, filmCurve:1}, detail:{heroBleed:1}});
+  add(SCENE_PLAN, {dance:{danceMosaic:6}, chuppah:{heroBleed:4, monoBand:2}, family:{heroBleed:2, portraitGallery:2}, tefillin:{heroBleed:3, scriptName:2}, torah:{heroBleed:2, scriptName:1}, speech:{heroBleed:2}});
+  if (SCENE_PLAN.dance) SCENE_PLAN.dance.target = 16; }
 
 /* =========================================================
    הפעלה
