@@ -4201,8 +4201,103 @@ async function buildZip(files){
 }
 
 /* מפרט הזמנה לבית הדפוס */
-function orderSpec(){
-  const sz = sizeById(S.project.sizeId), pc = printCfg(), c = coverCfg(), t = COVER_TYPES[c.type], n = PV.plan.spreads.length, G = geo(), CG = coverGeo();
+/* =========================================================
+   גרסת ניסיון לבית דפוס: כמה כפולות מגוונות מהאלבום + דף בדיקה (צבע, גווני אפור, צללים, חדות, טקסט, חיתוך וקיפול) + מכתב הסבר.
+   המטרה: לבדוק בית דפוס חדש בהזמנה קטנה לפני שעובדים איתו על אלבומים של לקוחות
+   ========================================================= */
+function trialCount(){ const lb = LABS[printCfg().lab]; return Math.max(5, lb && lb.spreads ? lb.spreads[0] : 0); } // כולל דף הבדיקה; לייזרלינק: לפחות 10
+function trialPick(){
+  const sps = PV.plan.spreads, n = sps.length, want = Math.min(n, trialCount() - 1), out = new Set();
+  const meta = id => (typeof META !== 'undefined' && META.get(id)) || S.photos.find(p => p.id === id) || {};
+  const by = f => { let bi = -1, bv = -1; sps.forEach((sp, i) => { if (out.has(i)) return; const v = f(sp); if (v > bv){ bv = v; bi = i; } }); if (bi >= 0 && bv > 0) out.add(bi); };
+  out.add(0);                                                                          // הפתיחה
+  by(sp => Math.max(0, ...sp.ids.map(id => (meta(id).starW || 0) + (meta(id).fw || 0) * .2)));   // פנים גדולות של בעל השמחה – גווני עור
+  by(sp => sp.ids.length);                                                             // הכי צפופה – הרבה תמונות קטנות
+  by(sp => (sp.fam === 'cardHero' || sp.fam === 'textMosaic' || (sp.custom && sp.custom.items || []).some(i => i.t === 'text' || i.t === 'el')) ? 1 : 0); // כיתוב / אלמנטים
+  by(sp => Math.max(0, ...sp.ids.map(id => Math.max(0, ...((meta(id).faces) || []).map(f => f.wh || 0)))) - .25); // לבוש לבן (שמלה, חולצות) – פרטים בלבן
+  if (n > 1) out.add(n - 1);                                                           // הסיום
+  for (let k = 1; out.size < want && k < 50; k++) for (let i = 0; i < n && out.size < want; i += Math.max(1, Math.floor(n / (want + 1)))) out.add(i); // פיזור שווה
+  return [...out].slice(0, want).sort((a, b) => a - b);
+}
+async function renderTestSpread(){
+  const G = geo(), k = DPI / 25.4, W = Math.round((G.W + 2*G.B) * k), H = Math.round((G.H + 2*G.B) * k), pc = printCfg(), sz = sizeById(S.project.sizeId);
+  const ps = albumPhotos().filter(p => (p.faces || []).length).sort((a, b) => (b.sharp || 0) - (a.sharp || 0));
+  const ph = ps[0] || albumPhotos()[0]; let img = null;
+  if (ph){ try{ img = await createImageBitmap(await DB.get('originals', ph.id), {imageOrientation:'from-image'}); }catch(_){ const b = await DB.get('previews', ph.id).catch(() => null); img = b ? await createImageBitmap(b).catch(() => null) : null; } }
+  const font = 'Heebo', pt = v => v * .3528, rtl = !(typeof isLTR === 'function' && isLTR());
+  const L = rtl ? G.pw : 0, Rp = rtl ? 0 : G.pw; // עמוד הבדיקות / עמוד התמונה
+  let U = Math.min(G.pw, G.H) / 300;
+  const draw = (ctx, meas) => {
+    if (!meas){ ctx.scale(k, k); ctx.translate(G.B, G.B); }
+    ctx.fillStyle = '#E4E4E4'; ctx.fillRect(-G.B, -G.B, G.W + 2*G.B, G.H + 2*G.B); // הגלישה באפור – רואים אם החיתוך במקום
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, G.W, G.H);
+    const txt = (t, x, y, size, o = {}) => { ctx.font = `${o.w || 400} ${pt(Math.max(5.5, size))}px ${font}`; ctx.fillStyle = o.c || '#111'; ctx.textAlign = o.a || 'right'; ctx.textBaseline = 'alphabetic'; ctx.direction = 'rtl'; ctx.fillText(t, x, y); };
+    const m = Math.max(12, (pc.safe || 5) + 6), x1 = L + G.pw - m, x0 = L + m, cw = x1 - x0, u = U;
+    let y = m + pt(20) * u;
+    txt('דף בדיקה לבית הדפוס · אלבום חכם', x1, y, 20 * u, {w:700});
+    y += pt(12) * u + 3; txt(`${(LABS[pc.lab] || {n:'כללי'}).n} · ${sz.w}×${sz.h} מ״מ לעמוד · ${DPI}dpi · sRGB · ${new Date().toLocaleDateString('he-IL')}`, x1, y, 10 * u, {c:'#444'});
+    const row = (label, cols, h) => { y += 6 * u; txt(label, x1, y + pt(9) * u, 9 * u, {w:700}); y += pt(9) * u + 2 * u; const w = cw / cols.length;
+      cols.forEach((c, i) => { const xx = x1 - (i + 1) * w; ctx.fillStyle = c[0]; ctx.fillRect(xx, y, w - .6 * u, h * u);
+        if (c[1]){ txt(c[1], xx + w - 1.5 * u, y + h * u + pt(Math.max(5.5, 7 * u)) + .4, 7 * u, {c:'#333'}); } }); y += h * u + pt(Math.max(5.5, 7 * u)) + 2 * u; };
+    const gray = v => { const g = Math.round(255 * (1 - v / 100)); return `rgb(${g},${g},${g})`; };
+    row('גווני אפור (0%–100% שחור) – צריכים להיות ניטרליים, בלי גוון ירקרק/ורדרד', [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map(v => [gray(v), v + '%']), 14);
+    row('פרטים בצללים – כל ריבוע צריך להיראות שונה מהשכן שלו', [0, 4, 8, 12, 16, 20, 26, 32].map(v => [`rgb(${v},${v},${v})`, String(v)]), 12);
+    row('פרטים בלבן (שמלות כלה, חולצות) – כל ריבוע שונה, הלבן לא "נשרף"', [255, 251, 247, 243, 239, 235, 229, 222].map(v => [`rgb(${v},${v},${v})`, String(v)]), 12);
+    row('צבעים בסיסיים', [['#FF0000', 'אדום'], ['#00A000', 'ירוק'], ['#0040FF', 'כחול'], ['#00B8F0', 'ציאן'], ['#E6007E', 'מגנטה'], ['#FFE600', 'צהוב'], ['#C9A24A', 'זהב'], ['#1F2A44', 'נייבי']], 14);
+    row('גווני עור – צריכים להיראות טבעיים, לא אדומים/צהובים מדי', [['#F6D7C3', ''], ['#F1C6A7', ''], ['#E8B48E', ''], ['#E0AC88', ''], ['#C68863', ''], ['#A86F4C', ''], ['#8D5A3B', ''], ['#5E3A26', '']], 14);
+    { y += 6 * u; txt('מעברים חלקים – בלי פסים/מדרגות', x1, y + pt(9) * u, 9 * u, {w:700}); y += pt(9) * u + 2 * u;
+      const gh = 9 * u; [[['#000', 0], ['#FFF', 1]], [['#F00', 0], ['#FF0', .2], ['#0F0', .4], ['#0FF', .6], ['#00F', .8], ['#F0F', 1]], [['#5E3A26', 0], ['#F6D7C3', 1]]].forEach(st => {
+        const g = ctx.createLinearGradient(x0, 0, x1, 0); st.forEach(([c, o]) => g.addColorStop(o, c)); ctx.fillStyle = g; ctx.fillRect(x0, y, cw, gh); y += gh + 1.2 * u; }); }
+    { y += 6 * u; txt('קריאות טקסט', x1, y + pt(9) * u, 9 * u, {w:700}); y += 2 * u;
+      for (const sz2 of [6, 8, 10, 12, 16]){ y += pt(sz2) * 1.15 + 1.2 * u; txt(`מזל טוב! רגעים של שמחה ונחת (${sz2}pt)`, x1, y, sz2); } }
+    { y += 6 * u; txt('עובי קווים: 0.1 · 0.25 · 0.5 · 1 מ״מ', x1, y + pt(9) * u, 9 * u, {w:700}); y += pt(9) * u + 3 * u;
+      for (const lw of [.1, .25, .5, 1]){ ctx.fillStyle = '#000'; ctx.fillRect(x0, y, cw * .82, lw); txt(lw + ' מ״מ', x1, y + lw / 2 + 1, 7 * u, {c:'#333'}); y += Math.max(3.5 * u, pt(Math.max(5.5, 7 * u)) + 1.2); } }
+    if (meas) return y;
+    // עמוד התמונה: צילום מקורי מהאלבום בגודל גדול – בדיקת חדות וגווני עור אמיתיים
+    if (img){ const bx = Rp + m, by = m + 14 * u, bw = G.pw - 2*m, bh = G.H - 2*m - 26 * u, s2 = coverRect(img.width, img.height, bw / bh, .5, .42, 1);
+      ctx.drawImage(img, s2.sx, s2.sy, s2.sw, s2.sh, bx, by, bw, bh);
+      txt(`צילום מקורי מהאלבום · ${Math.round(s2.sw / (bw / 25.4))}dpi · לבדוק חדות וגווני עור`, Rp + G.pw - m, m + 8 * u, 10 * u, {w:700});
+      txt('השוו את ההדפסה למסך: צבעים, בהירות, וחדות בעיניים ובשיער', Rp + G.pw - m, G.H - m - 4 * u, 9 * u, {c:'#444'}); }
+    // קווי עזר: אזור בטוח (מקווקו), קו קיפול באמצע, מסגרת 3 מ״מ מקצה החיתוך – מראה אם החיתוך ישר ובמרכז
+    ctx.lineWidth = .25; ctx.strokeStyle = '#E6007E'; ctx.setLineDash([2, 1.5]);
+    const sf = pc.safe || 5; ctx.strokeRect(sf, sf, G.pw - 2*sf, G.H - 2*sf); ctx.strokeRect(G.pw + sf, sf, G.pw - 2*sf, G.H - 2*sf);
+    ctx.setLineDash([]); ctx.strokeStyle = '#00A0E0'; ctx.lineWidth = .35; ctx.strokeRect(3, 3, G.W - 6, G.H - 6);
+    ctx.strokeStyle = '#888'; ctx.setLineDash([3, 2]); ctx.beginPath(); ctx.moveTo(G.pw, 0); ctx.lineTo(G.pw, G.H); ctx.stroke(); ctx.setLineDash([]);
+    txt(`ורוד מקווקו = אזור בטוח (${sf} מ״מ) · כחול = 3 מ״מ מקצה החיתוך – אמור להיות שווה מכל הצדדים · אפור מקווקו = קיפול`, G.W - 5, G.H - 4.6, 5.5, {c:'#555'});
+  };
+  { const mc = document.createElement('canvas'); mc.width = mc.height = 4; const mx = mc.getContext('2d'); // מדידה: מקטינים את הכל עד שנכנס בעמוד (הטקסט לבדיקת קריאות נשאר בגודל האמיתי)
+    for (let t = 0; t < 8; t++){ const yE = draw(mx, true), lim = G.H - Math.max(12, (pc.safe || 5) + 6) - 4; if (yE <= lim) break; U *= Math.max(.6, (lim - 30) / (yE - 30)) * .98; } mc.width = mc.height = 1; }
+  const nb = Math.max(1, Math.ceil(W * H / PRINT_BAND_PX)), bh = Math.ceil(H / nb), strips = [];
+  for (let b = 0; b < nb; b++){ const y0 = b * bh, h = Math.min(bh + 2, H - y0), c = document.createElement('canvas'); c.width = W; c.height = h;
+    const x = c.getContext('2d', {alpha:false}); x.translate(0, -y0); draw(x);
+    strips.push({y:y0, h, jpeg:await new Promise((res, rej) => c.toBlob(z => z ? res(z) : rej(new Error('encode')), 'image/jpeg', .95))}); c.width = c.height = 1; await nextFrame(); }
+  if (img) img.close();
+  return {strips, W, H, no:0, G:Object.assign({}, G, {foldXs:[G.pw]}), test:true};
+}
+function trialLetter(pages){
+  const pc = printCfg(), lb = LABS[pc.lab] || {n:'בית הדפוס'}, sz = sizeById(S.project.sizeId), n = pages.length;
+  const lines = [
+    `שלום רב,`, '',
+    `מצורפת גרסת ניסיון של אלבום תמונות להדפסה – כדי לבדוק את האיכות לפני שנתחיל לעבוד יחד באופן קבוע.`,
+    `הקבצים הוכנו באפליקציית "אלבום חכם" של חי אפליקציות.`, '',
+    'מה בחבילה', '-'.repeat(20),
+    `• ${n} כפולות (01 עד ${String(n).padStart(2, '0')}) – הכפולה האחרונה (${String(n).padStart(2, '0')}) היא דף בדיקה טכני: גווני אפור, צללים, לבנים, צבעים, גווני עור, מעברים, טקסט וקווים.`,
+    `• כריכה (00_cover) אם נדרשת, ומפרט הזמנה.`,
+    `• גודל עמוד ${sz.w}×${sz.h} מ״מ · ${DPI}dpi · sRGB · ${pc.format === 'pdf' ? 'PDF' : 'JPG'}${pc.bleed ? ` · גלישה ${pc.bleed} מ״מ` : ' · בלי גלישה'}.`, '',
+    'מה נשמח שתבדקו / תחזירו לנו', '-'.repeat(20),
+    '1. האם הקבצים תקינים ומתאימים לדרישות שלכם (גודל, גלישה, שמות קבצים)? אם צריך שינוי – נעדכן את המערכת.',
+    '2. צבע: האם אתם ממירים מ-sRGB בעצמכם? האם יש פרופיל ICC מומלץ?',
+    '3. בדף הבדיקה: האם כל ריבועי הצללים והלבנים נבדלים זה מזה, והאפורים ניטרליים?',
+    '4. חיתוך וקיפול: הקו הכחול אמור לצאת במרחק שווה מכל קצוות הדף.',
+    '5. מחיר לאלבום בגודל הזה לפי מספר כפולות, וזמן אספקה.', '',
+    lb.spreads ? `הערה: לפי הדרישות שלכם אלבום כולל ${lb.spreads[0]}–${lb.spreads[1]} כפולות – לכן הניסיון כולל ${n} כפולות.` : '',
+    'תודה רבה!', 'חי אפליקציות', '',
+    `נוצר: ${new Date().toLocaleString('he-IL')}`,
+  ].filter(x => x !== null);
+  return new Blob(['﻿' + lines.join('\r\n')], {type:'text/plain;charset=utf-8'});
+}
+function orderSpec(nOver){
+  const sz = sizeById(S.project.sizeId), pc = printCfg(), c = coverCfg(), t = COVER_TYPES[c.type], n = nOver || PV.plan.spreads.length, G = geo(), CG = coverGeo();
   const lines = [
     'מפרט הזמנה – אלבום חכם · חי אפליקציות', '='.repeat(40),
     `שם האלבום: ${S.project.name || '-'}`,
@@ -4242,6 +4337,7 @@ function exportChooser(){
         <p>קבצים ב-${DPI}dpi מהתמונות המקוריות, לפי דרישות בתי הדפוס.</p>
         <div class="acts col">
           <button class="btn accent" data-a="pkg">חבילה מלאה לבית הדפוס<small>כריכה + ${n} כפולות + מפרט הזמנה (ZIP)</small></button>
+          <button class="btn ghost trial-btn" data-a="trial">🧪 גרסת ניסיון לבית דפוס<small>${trialCount()} כפולות נבחרות + דף בדיקת צבע וחדות + מכתב הסבר</small></button>
           <button class="btn ghost" data-a="all">כל הכפולות – ${n}</button>
           <button class="btn ghost" data-a="cover">${t.none ? 'מפרט הכריכה' : 'הכריכה בלבד'} <small>${t.n}</small></button>
           <button class="btn ghost" data-a="one">הכפולה הנוכחית (${PV.cur + 1})</button>
@@ -4279,8 +4375,8 @@ async function exportFlow(pre){
     const again = await confirmBox('גופן לא נטען', `הגופנים האלה לא נטענו: ${miss.map(m => m.replace(/^\d+ 40px /, '').replace(/"/g, '')).join(', ')}. בלעדיהם הכיתובים יודפסו בגופן אחר. בדקו חיבור לאינטרנט ונסו שוב.`, 'לנסות שוב');
     if (!again) return; }
   const pc = printCfg(), cc = coverCfg(), ct = COVER_TYPES[cc.type], cover = ensureCover();
-  const wantCover = choice === 'cover' || choice === 'pkg', wantSpreads = choice !== 'cover';
-  const list = !wantSpreads ? [] : choice === 'one' ? [{sp:PV.plan.spreads[PV.cur], no:PV.cur + 1}] : PV.plan.spreads.map((sp, i) => ({sp, no:i + 1}));
+  const trial = choice === 'trial', wantCover = choice === 'cover' || choice === 'pkg' || trial, wantSpreads = choice !== 'cover';
+  const list = !wantSpreads ? [] : choice === 'one' ? [{sp:PV.plan.spreads[PV.cur], no:PV.cur + 1}] : trial ? trialPick().map(i => ({sp:PV.plan.spreads[i], no:i + 1})) : PV.plan.spreads.map((sp, i) => ({sp, no:i + 1}));
   const coverJob = wantCover && !ct.none ? {sp:cover, no:0, cover:true} : null;
   const jobs = (coverJob ? [coverJob] : []).concat(list);
   { const nos = new Set(list.map(j => j.no)); if (coverJob) nos.add(0); // בדיקה לפני דפוס
@@ -4307,6 +4403,8 @@ async function exportFlow(pre){
       if (j.cover) coverPage = pg; else pages.push(pg);
       qual.push(...r.quality);
     }
+    if (trial){ stepEl().textContent = 'מצייר דף בדיקה'; await nextFrame();
+      const tp = await renderTestSpread(); pages.forEach(p => { p.orig = p.no; }); pages.push(tp); pages.forEach((p, i) => { p.no = i + 1; }); } // בגרסת ניסיון: מספור רציף 01, 02…
     stepEl().textContent = 'בונה קבצים'; barEl().style.width = '100%'; await nextFrame();
     const sz = sizeById(S.project.sizeId), base = (S.project.name || 'album').replace(/[\\/:*?"<>|]/g, '').trim() || 'album';
     const pad = n => String(n).padStart(2, '0'), files = [];
@@ -4325,12 +4423,13 @@ async function exportFlow(pre){
       if (pc.format === 'pdf') files.push({name:choice === 'one' ? `spread_${pad(pages[0].no)}.pdf` : `spreads_${pad(1)}-${pad(pages.length)}.pdf`, blob:await buildPDF(pages, pages[0].G, S.project.name || 'Photobook', opt)});
       else for (const p of pages){ const one = await stripsToJpeg(p); if (one) files.push({name:pc.lab === 'laserlink' ? `${pad(p.no)}.jpg` : `spread_${pad(p.no)}.jpg`, blob:await jpegWithDpi(one)}); else for (let i = 0; i < p.strips.length; i++) files.push({name:`spread_${pad(p.no)}_part${i + 1}.jpg`, blob:await jpegWithDpi(p.strips[i].jpeg)}); }
     }
-    if (choice === 'pkg' || (choice === 'cover' && ct.none)) files.push({name:'מפרט-הזמנה.txt', blob:orderSpec()});
+    if (choice === 'pkg' || trial || (choice === 'cover' && ct.none)) files.push({name:'מפרט-הזמנה.txt', blob:orderSpec(trial ? pages.length : 0)});
+    if (trial) files.push({name:'מכתב-לבית-הדפוס.txt', blob:trialLetter(pages)});
     let out;
     if (files.length === 1){ const f = files[0], ext = f.name.split('.').pop();
       const nm = choice === 'cover' ? `כריכה-${base}.${ext}` : choice === 'one' ? `אלבום-${base}-${sz.label}-כפולה${pages[0].no}.${ext}` : `אלבום-${base}-${sz.label}-מלא.${ext}`;
       out = new File([f.blob], nm, {type:f.blob.type}); }
-    else out = new File([await buildZip(files)], `${choice === 'pkg' ? 'חבילה-לדפוס' : 'אלבום'}-${base}-${sz.label}.zip`, {type:'application/zip'});
+    else out = new File([await buildZip(files)], `${trial ? `גרסת-ניסיון-${(LABS[pc.lab] || {n:'דפוס'}).n}` : choice === 'pkg' ? 'חבילה-לדפוס' : 'אלבום'}-${base}-${sz.label}.zip`, {type:'application/zip'});
     const secs = ((performance.now() - t0) / 1000).toFixed(0);
     const minQ = qual.length ? Math.min(...qual.map(q => q.dpi)) : 0, ql = qualityLabel(minQ), low = qual.filter(q => q.dpi < 150).length;
     const Li = t => '⁦' + t + '⁩', G = geo(), CG = coverGeo();
