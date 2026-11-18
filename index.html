@@ -6100,7 +6100,7 @@ async function bkCovers(){
 }
 async function bkEnsure(...idx){
   for (const i of idx){ if (i < 0 || i >= BK.n || BK.cache.has(i)) continue;
-    let cv = document.createElement('canvas'); await paint(cv, PV.plan.spreads[i], Math.round(Math.min(2400, Math.max(1200, (BK.cv && BK.cv.width || 0) * .96))), {maxDpr:1}); // חדות לפי רוחב המסך בפועל if (isLTR()){ const f = flipCv(cv); cv.width = 1; cv = f; } BK.cache.set(i, cv);
+    let cv = document.createElement('canvas'); await paint(cv, PV.plan.spreads[i], Math.round(Math.min(2400, Math.max(1200, (BK.cv && BK.cv.width || 0) * .96))), {maxDpr:1}); /* חדות לפי רוחב המסך בפועל */ if (isLTR()){ const f = flipCv(cv); cv.width = 1; cv = f; } BK.cache.set(i, cv);
     if (BK.cache.size > 7){ const far = [...BK.cache.keys()].sort((a, b) => Math.abs(b - BK.pos) - Math.abs(a - BK.pos))[0]; if (!idx.includes(far)){ BK.cache.get(far).width = 1; BK.cache.delete(far); } } }
 }
 function bkFace(side, k){
