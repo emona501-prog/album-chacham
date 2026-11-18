@@ -1827,7 +1827,8 @@ function layoutSpread0(sp){
   if (sp.fam !== 'title' && sp.fam !== 'tpl'){ PEAK_ID = sp.hero || null; try{ sizeByPeople(L); } finally{ PEAK_ID = null; } } // תמונה עם הרבה אנשים מקבלת משבצת גדולה
   if (typeof isLTR === 'function' && isLTR()){ mirrorItems(L.items, G.W); mirrorBg(L.bg); }
   if (typeof applyFaces === 'function') applyFaces(L);
-  if (typeof proOverlay === 'function') proOverlay(L); // תמונות שמונחות מעל – לא מסתירות ראשים
+  if (typeof proOverlay === 'function') proOverlay(L);
+  if (typeof corkAnchors === 'function') corkAnchors(L); // תמונות שמונחות מעל – לא מסתירות ראשים
   if (typeof applyGlobalBg === 'function'){ CUR_SP_INDEX = PV.plan ? Math.max(0, PV.plan.spreads.indexOf(sp)) : 0; applyGlobalBg(L); }
   if (sp.fam === 'title' && typeof autoDeco === 'function') autoDeco(L, 'title');
   if (typeof autoEls === 'function') autoEls(L, sp, CUR_SP_INDEX);
@@ -1863,7 +1864,7 @@ function fullR(ctx){
   const xs = P.map(p => p.x), ys = P.map(p => p.y); return {x:Math.min(...xs), y:Math.min(...ys), w:Math.max(...xs) - Math.min(...xs), h:Math.max(...ys) - Math.min(...ys)};
 }
 function hexLum(c){ const m = /^#?([0-9a-f]{6})$/i.exec(String(c || '').trim()); if (!m) return .8; const n = parseInt(m[1], 16); return (.299*(n >> 16) + .587*((n >> 8) & 255) + .114*(n & 255)) / 255; }
-function bgLum(bg, G){ if (!bg) return .8; if (bg.type === 'solid') return hexLum(bg.color); if (bg.type === 'linear' || bg.type === 'radial') return (hexLum(bg.c1) + hexLum(bg.c2)) / 2;
+function bgLum(bg, G){ if (!bg) return .8; if (bg.type === 'elbg') return .5; if (bg.type === 'solid') return hexLum(bg.color); if (bg.type === 'linear' || bg.type === 'radial') return (hexLum(bg.c1) + hexLum(bg.c2)) / 2;
   return hexLum(bg.base || bg.color || (G.T && G.T.bg)); }
 function drawBg(ctx, L, k, ox, bgImg){
   const G = L.G, cw = ctx.canvas.width, ch = ctx.canvas.height, bg = L.bg, R = fullR(ctx);
@@ -1878,6 +1879,7 @@ function drawBg(ctx, L, k, ox, bgImg){
     const gr = ctx.createRadialGradient(cx, cy, 0, cx, cy, rr); gr.addColorStop(0, bg.c1); gr.addColorStop(1, bg.c2);
     ctx.fillStyle = gr; ctx.fillRect(R.x, R.y, R.w, R.h);
   } else if (bg.type === 'tex'){ drawTextureC(ctx, L, k, ox, bg); }
+  else if (bg.type === 'elbg'){ drawElBg(ctx, L, k, ox, bg); }
   else if (bg.type === 'img'){ ctx.fillStyle = bg.base || G.T.bg; ctx.fillRect(R.x, R.y, R.w, R.h); if (bgImg) drawBgImage(ctx, bgImg, L, k, ox, bg); }
   else if (bg.type === 'blur'){
     ctx.fillStyle = G.T.bg; ctx.fillRect(R.x, R.y, R.w, R.h);
@@ -5548,7 +5550,7 @@ function fixTextContrast(items, bg, T){
     const light = isLightHex(it.color);
     if (dark && !light) it.color = T.inkOnDark; else if (!dark && light) it.color = T.ink; });
 }
-function texElIds(bg){ return bg && bg.type === 'tex' && bg.tex === 'botanical' ? BOTANICAL.map(f => 'b:' + f) : []; }
+function texElIds(bg){ if (bg && bg.type === 'elbg') return [bg.el, bg.frame].filter(Boolean); return bg && bg.type === 'tex' && bg.tex === 'botanical' ? BOTANICAL.map(f => 'b:' + f) : []; }
 
 /* ---------- תמונה כרקע ---------- */
 function drawBgImage(ctx, img, L, k, ox, bg){
@@ -7167,7 +7169,7 @@ function proOverlay(L){
     const offs = grp[0].gc; let best = null;
     for (const o of offs){ const bad = grp.reduce((a, it) => a + under.reduce((b, hr) => b + rOver({x:it.x + (ltr ? -o.dx : o.dx) - 2, y:it.y + o.dy - it.h*.2, w:it.w + 4, h:it.h*1.4}, hr) / Math.max(1, hr.w * hr.h), 0), 0);
       if (!best || bad < best.bad - 1e-6) best = {bad, o}; }
-    grp.forEach(it => { it.x += ltr ? -best.o.dx : best.o.dx; it.y += best.o.dy; delete it.gc; });
+    const gname = grp[0].grp; L.items.filter(i => i.grp === gname).forEach(it => { it.x += ltr ? -best.o.dx : best.o.dx; it.y += best.o.dy; delete it.gc; });
   }
   const ov = L.items.filter(i => i.cands); if (!ov.length) return;
   const heads = L.items.filter(i => i.t === 'photo' && !i.cands).flatMap(headRectsOnSpread);
@@ -7342,6 +7344,65 @@ Object.assign(FAMS, {shelf:{min:6, max:14, vars:4, gen:genShelf, w:1, name:'כו
 Object.assign(EL_CATS, {scrap:'נייר וסלוטייפ', pins:'נעצים'});
 Object.keys(EV_CATS).forEach(k => { if (!EV_CATS[k].includes('scrap')) EV_CATS[k].push('scrap'); });
 VORN['v:rf-metal'] = {n:'מסגרת מתכת', kind:'rframe', ar:.8, src:'rf-metal.webp', C:990, inn:627, ratio:.3};
+
+/* =========================================================
+   שלב 26 – לוח מודעות משעם: תמונות מודפסות עם נעצים וסלוטייפ, פתק עם כיתוב
+   ========================================================= */
+const CORK_PINS = ['p01', 'p02', 'p03', 'p04', 'p07', 'p08', 'p06', 'p12'].map(p => 'b:' + p + '.webp'); // כחול, זהב, אדום, ירוק, שמנת, אדום, נחושת, שחור
+const CORK_TAPES = ['s02', 's04', 's05', 's06', 's09', 's11'].map(p => 'b:' + p + '.webp');
+function genCork(ids, G, v){
+  const T = G.T, items = [], framed = v % 2, note = (v >> 1) % 2;
+  const fmm = framed ? Math.max(6, G.H * .045) : 0, half = Math.ceil(ids.length / 2);
+  const word = note ? spreadWord() : '';
+  let rs = 1; const R = () => ((rs = (rs * 16807 + (ids[0] || 'x').length * 31 + v) % 2147483647) / 2147483647);
+  ['R', 'L'].forEach((side, si) => {
+    const part = si ? ids.slice(half) : ids.slice(0, half); if (!part.length) return;
+    let r = inset(page(side, G), G.m * 1.3 + fmm, G.m * 1.1 + fmm);
+    if (note && si === 0){ // פתק עם כיתוב בפינה התחתונה של העמוד הראשון
+      const nw = Math.min(r.w * .42, 90), nh = nw * .74, nx = side === 'R' ? r.x + r.w - nw : r.x, ny = r.y + r.h - nh;
+      items.push({t:'el', el:'b:s03.webp', x:nx, y:ny, w:nw, h:nh, rot:-3, op:1, flip:false, shadow:true});
+      if (word) items.push({t:'text', x:nx + nw*.08, y:ny + nh*.18, w:nw*.84, h:nh*.64, text:word, font:'"Amatic SC"', weight:700, size:nh*.36, color:'#3A2A1C', rot:-3});
+      items.push({t:'el', el:CORK_PINS[2], x:nx + nw*.46, y:ny - nh*.12, w:nh*.2, h:nh*.2*1.27, rot:0, op:1, flip:false, shadow:true});
+      r = {x:r.x, y:r.y, w:r.w, h:r.h - nh - G.g * 2};
+    }
+    justify(part, r, G.g * 3.2).forEach((c, i) => {
+      const sh = .86, w = c.w * sh, h = c.h * sh, x = c.x + (c.w - w) / 2 + (R() - .5) * c.w * .06, y = c.y + (c.h - h) / 2 + (R() - .5) * c.h * .06;
+      const ph = P(part[i], {x, y, w, h}, T, {border:Math.max(1.6, Math.min(w, h) * .035), borderColor:'#FBF8F1', shadow:.85, rot:(R() - .5) * 7, vignette:0});
+      items.push(ph);
+      const tape = (i + si) % 3 === 2, ps = clamp(Math.min(w, h) * .15, 8, 18);
+      if (tape){ const tw = clamp(w * .42, 18, 60); items.push({t:'el', el:CORK_TAPES[(i + si * 2) % CORK_TAPES.length], x:0, y:0, w:tw, h:tw * .26, rot:0, op:.92, flip:false, anchor:ph, at:'tape'}); }
+      else items.push({t:'el', el:CORK_PINS[(i * 3 + si * 5) % CORK_PINS.length], x:0, y:0, w:ps, h:ps * 1.27, rot:0, op:1, flip:false, shadow:true, anchor:ph, at:'pin'});
+    });
+  });
+  return {bg:{type:'elbg', el:'b:cork-plain.webp', frame:framed ? 'b:cork-frame.webp' : null, fst:78, fmm}, items};
+}
+/* אחרי שמירת הראשים התמונות זזות/קטנות – הנעצים והסלוטייפ עוברים איתן */
+function corkAnchors(L){
+  for (const it of L.items){ const p = it.anchor; if (!p) continue; delete it.anchor;
+    const th = (p.rot || 0) * Math.PI / 180, cx = p.x + p.w/2, cy = p.y + p.h/2, d = p.h/2 - (it.at === 'pin' ? Math.max(2.5, p.h * .05) : 0);
+    const ax = cx + Math.sin(th) * d, ay = cy - Math.cos(th) * d;
+    if (it.at === 'pin'){ it.x = ax - it.w * .5; it.y = ay - it.h * .62; it.rot = (p.rot || 0) * .5; }
+    else { it.x = ax - it.w/2; it.y = ay - it.h/2; it.rot = (p.rot || 0) + ((it.w * 7) % 6 - 3); }
+  }
+}
+function drawElBg(ctx, L, k, ox, bg){
+  const G = L.G, img = ELS.bmp.get(bg.el), R0 = {x:(-G.B + ox) * k, y:(-G.B + ox) * k, w:(G.W + 2*G.B) * k, h:(G.H + 2*G.B) * k};
+  ctx.fillStyle = '#B9875A'; ctx.fillRect(R0.x, R0.y, R0.w, R0.h);
+  if (img && img.width){ const s = coverRect(img.width, img.height, R0.w / R0.h, .5, .5, 1); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(img, s.sx, s.sy, s.sw, s.sh, R0.x, R0.y, R0.w, R0.h); }
+  const fi = bg.frame && ELS.bmp.get(bg.frame);
+  if (fi && fi.width){ // מסגרת עץ ב-9 חלקים: הפינות לא נמתחות
+    const S = bg.fst, t = (bg.fmm + G.B) * k, X = R0.x, Y = R0.y, W = R0.w, H = R0.h, iw = fi.width, ih = fi.height;
+    const g = ctx.createLinearGradient(0, Y + t, 0, Y + t + 5*k); g.addColorStop(0, 'rgba(40,20,5,.45)'); g.addColorStop(1, 'rgba(40,20,5,0)'); ctx.fillStyle = g; ctx.fillRect(X, Y + t, W, 5*k);
+    const gl = ctx.createLinearGradient(X + t, 0, X + t + 4*k, 0); gl.addColorStop(0, 'rgba(40,20,5,.35)'); gl.addColorStop(1, 'rgba(40,20,5,0)'); ctx.fillStyle = gl; ctx.fillRect(X + t, Y, 4*k, H);
+    const d = (sx, sy, sw, sh, dx, dy, dw, dh) => ctx.drawImage(fi, sx, sy, sw, sh, dx, dy, dw, dh);
+    d(0, 0, S, S, X, Y, t, t); d(iw - S, 0, S, S, X + W - t, Y, t, t); d(0, ih - S, S, S, X, Y + H - t, t, t); d(iw - S, ih - S, S, S, X + W - t, Y + H - t, t, t);
+    d(S, 0, iw - 2*S, S, X + t, Y, W - 2*t, t); d(S, ih - S, iw - 2*S, S, X + t, Y + H - t, W - 2*t, t);
+    d(0, S, S, ih - 2*S, X, Y + t, t, H - 2*t); d(iw - S, S, S, ih - 2*S, X + W - t, Y + t, t, H - 2*t);
+  }
+}
+Object.assign(FAMS, {cork:{min:4, max:10, vars:4, gen:genCork, w:1, name:'לוח מודעות'}});
+{ const add = (P0, o) => { for (const k in o) if (P0[k]) Object.assign(P0[k].fams, o[k]); };
+  add(CAT_PLAN, {group:{cork:1}, event:{cork:1}, detail:{cork:2}, portrait:{cork:1}}); add(SCENE_PLAN, {family:{cork:1}, tables:{cork:2}}); }
 
 /* =========================================================
    הפעלה
