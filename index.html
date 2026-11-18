@@ -588,7 +588,7 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
     <button class="pill" id="fsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
   </div>
   <div class="sub-row">
-    <button id="colBtn">🧩 קולאז׳ים</button><button id="bookBtn">📖 תצוגת ספר</button><button id="addSpBtn">＋ כפולה</button><button id="styBtn">סגנון לכפולה</button><button id="clrBtn">ניקוי</button><button data-help="page">💡 הסברים</button>
+    <button id="colBtn">🧩 קולאז׳ים</button><button id="bookBtn">📖 תצוגת ספר</button><button id="shareBtn">📤 שיתוף</button><button id="addSpBtn">＋ כפולה</button><button id="styBtn">סגנון לכפולה</button><button id="clrBtn">ניקוי</button><button data-help="page">💡 הסברים</button>
   </div>
   <div class="strip" id="strip"></div>
   <div class="ctrl">
@@ -5885,6 +5885,52 @@ async function openAlbums(){
     if (a || e.target === s) s.remove();
   };
 }
+
+/* ---------- שיתוף האלבום לוואטסאפ ולרשתות: סרטון דפדוף, תמונות של כפולות, או הקישור לאפליקציה ---------- */
+async function spreadShareJpeg(sp, no, W, wm){
+  const cv = document.createElement('canvas'); await paint(cv, sp, W, {maxDpr:1});
+  if (wm){ const c = cv.getContext('2d'), h = Math.round(cv.height * .032); c.save(); c.font = `600 ${h}px Heebo, sans-serif`; c.textAlign = 'left'; c.textBaseline = 'bottom';
+    c.shadowColor = 'rgba(0,0,0,.5)'; c.shadowBlur = h * .4; c.fillStyle = 'rgba(255,255,255,.8)'; c.fillText('אלבום חכם · חי אפליקציות', h * .7, cv.height - h * .5); c.restore(); }
+  const b = await new Promise(r => cv.toBlob(r, 'image/jpeg', .9)); cv.width = cv.height = 1;
+  const base = (albumTitle() || 'album').replace(/[\\/:*?"<>|]/g, '').trim() || 'album';
+  return new File([b], `${base}-${String(no).padStart(2, '0')}.jpg`, {type:'image/jpeg'});
+}
+async function shareFiles(files, text){
+  if (navigator.canShare && navigator.canShare({files})){ try{ await navigator.share({files, text}); return; }catch(e){ if (e && e.name === 'AbortError') return; } }
+  for (const f of files){ const u = URL.createObjectURL(f), l = document.createElement('a'); l.href = u; l.download = f.name; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 60000); await new Promise(r => setTimeout(r, 300)); }
+  toast('הקבצים נשמרו בהורדות – אפשר לשלוח אותם מהגלריה', 4000);
+}
+async function shareAlbumDialog(){
+  if (!PV.plan || !PV.plan.spreads.length){ toast('עוד אין אלבום לשתף'); return; }
+  const n = PV.plan.spreads.length, wmOn = S.project.shareWm !== false;
+  const s = document.createElement('div'); s.className = 'scrim modal-scrim';
+  s.innerHTML = `<div class="modal"><h3>📤 שיתוף האלבום</h3><p style="font-size:13.5px">שולחים לוואטסאפ, אינסטגרם, פייסבוק או כל אפליקציה – בוחרים מהרשימה של הטלפון.</p>
+    <div class="acts col">
+      <button class="btn accent" data-a="video">🎬 סרטון דפדוף באלבום<small style="display:block;font-weight:400;opacity:.8">הכי מרשים לסטטוס ולרשתות</small></button>
+      <button class="btn ghost" data-a="cur">🖼️ הכפולה הזו כתמונה</button>
+      <button class="btn ghost" data-a="all">📚 כל הכפולות כתמונות (${Math.min(n, 30)})</button>
+      <button class="btn ghost" data-a="wa">💬 הודעה בוואטסאפ עם קישור לאפליקציה</button>
+    </div>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-size:13.5px"><input type="checkbox" id="shWm" ${wmOn ? 'checked' : ''}> חתימה קטנה "אלבום חכם · חי אפליקציות" בתמונות</label>
+    <div class="acts" style="margin-top:10px"><button class="btn ghost" data-a="x">סגירה</button></div></div>`;
+  document.body.appendChild(s);
+  s.onclick = async e => {
+    const a = e.target.closest('[data-a]'); if (!a){ if (e.target === s) s.remove(); return; }
+    const k = a.dataset.a, wm = s.querySelector('#shWm').checked; S.project.shareWm = wm; touchProject();
+    const text = `${albumTitle() || 'האלבום שלנו'} 📖`;
+    if (k === 'x'){ s.remove(); return; }
+    if (k === 'video'){ s.remove(); await openBook(); setTimeout(() => bkRecord(), 600); return; }
+    if (k === 'wa'){ s.remove(); const url = location.origin + location.pathname;
+      location.href = 'https://wa.me/?text=' + encodeURIComponent(`${text}\nעיצבתי אלבום באפליקציית "אלבום חכם" של חי אפליקציות – מעלים תמונות והאלבום מעוצב לבד:\n${url}`); return; }
+    a.disabled = true; const old = a.innerHTML;
+    try{
+      const idx = k === 'cur' ? [PV.cur] : PV.plan.spreads.map((_, i) => i).slice(0, 30), files = [];
+      for (let j = 0; j < idx.length; j++){ a.textContent = `מכין תמונות… ${j + 1}/${idx.length}`; files.push(await spreadShareJpeg(PV.plan.spreads[idx[j]], idx[j] + 1, 2000, wm)); }
+      s.remove(); await shareFiles(files, text);
+    }catch(err){ console.warn(err); toast('השיתוף נכשל – נסו שוב'); a.disabled = false; a.innerHTML = old; }
+  };
+}
+$('shareBtn').onclick = () => shareAlbumDialog();
 
 /* ---------- שיתוף האפליקציה ---------- */
 async function shareApp(){
