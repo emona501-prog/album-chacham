@@ -2095,6 +2095,10 @@ function drawPhotoItem(ctx, it, k, ox, img){
     ctx.drawImage(img, s.sx, s.sy, s.sw, s.sh, -dw/2, -dh/2, dw, dh);
     if (it.mono){ ctx.globalCompositeOperation = 'saturation'; ctx.fillStyle = '#808080'; ctx.fillRect(-iw/2, -ih/2, iw, ih); ctx.globalCompositeOperation = 'source-over'; } // שחור-לבן
     if (it.veil){ ctx.fillStyle = `rgba(255,255,255,${it.veil})`; ctx.fillRect(-iw/2, -ih/2, iw, ih); }
+    if (it.inshadow){ // צל פנימי – התמונה יושבת בעומק התא
+      const gt = ctx.createLinearGradient(0, -ih/2, 0, -ih/2 + ih*.22); gt.addColorStop(0, 'rgba(25,12,4,.55)'); gt.addColorStop(1, 'rgba(25,12,4,0)'); ctx.fillStyle = gt; ctx.fillRect(-iw/2, -ih/2, iw, ih*.22);
+      const gl = ctx.createLinearGradient(-iw/2, 0, -iw/2 + iw*.16, 0); gl.addColorStop(0, 'rgba(25,12,4,.38)'); gl.addColorStop(1, 'rgba(25,12,4,0)'); ctx.fillStyle = gl; ctx.fillRect(-iw/2, -ih/2, iw*.16, ih);
+      const gr = ctx.createLinearGradient(iw/2, 0, iw/2 - iw*.1, 0); gr.addColorStop(0, 'rgba(25,12,4,.25)'); gr.addColorStop(1, 'rgba(25,12,4,0)'); ctx.fillStyle = gr; ctx.fillRect(iw/2 - iw*.1, -ih/2, iw*.1, ih); }
   } else { ctx.fillStyle = '#D9D1C5'; ctx.fillRect(-iw/2, -ih/2, iw, ih); }
   if (it.vignette){ // הכהיה עדינה בשוליים
     const r = Math.hypot(iw, ih)/2, gr = ctx.createRadialGradient(0, 0, r*.45, 0, 0, r);
@@ -3092,7 +3096,7 @@ function applyFaces0(L){
       continue;
     }
     it.fx = ff.fx; it.fy = ff.fy;
-    if (it.shape && it.shape !== 'rect' && it.shape !== 'rounded'){ // צורה מיוחדת שחותכת אנשים → מלבן
+    if (it.shape && it.shape !== 'rect' && it.shape !== 'rounded' && !it.cell){ // צורה מיוחדת שחותכת אנשים → מלבן (לא בתא של רהיט)
       const sN0 = coverRect(m.width, m.height, fa, it.fx, .5, it.zoom).sh / m.height, top0 = ff.box[1] - .18*sN0;
       const keep = it.fy; if (sN0 < .995 && ff.box[3] - top0 < sN0 * .92) it.fy = clamp(top0 + sN0/2, 0, 1);
       if (!shapeSafe(it, m, ff)){ it.shape = 'rect'; it.fy = keep; applyFacesOne(L, it, m, ff, G, zone); continue; }
@@ -3659,7 +3663,7 @@ function edAction(a, btn){
         <div class="ed-row"><span>מסגרת תלת־ממד</span><div class="ed-chips">${[['', 'בלי'], ['silver', 'כסף'], ['gold', 'זהב'], ['wood', 'עץ']].map(([v, n]) => `<button data-f3="${v}" class="${(it.frame || '') === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>
         <div class="ed-row"><span></span><button class="mini" data-f3all="1">החלה על כל התמונות בכפולה</button></div>
         <div class="ed-row"><span>מסגרת פולארויד</span><button class="switch ${it.borderB ? 'on' : ''}" data-pol="1"></button></div>
-        <div class="ed-row"><span>עיטור זהב<br><small style="opacity:.7">חד בדפוס</small></span><div class="ed-chips">${[['', 'בלי'], ['v:rf-baroque', 'בארוק'], ['v:rf-euca1', 'אקליפטוס'], ['v:rf-euca2', 'אקליפטוס עשיר'], ['v:rf-roses', 'ורדים'], ['v:rf-silver', 'בארוק כסף'], ['v:rf-deco', 'ארט דקו'], ['v:rf-navy', 'דקו כחול'], ['v:fr-ornate', 'מעוטרת'], ['v:fr-classic', 'קלאסית'], ['v:fr-leaf', 'עלים'], ['v:fr-deco', 'קווי דקו'], ['v:cr-scroll', 'פינות']].map(([v, n]) => `<button data-vf="${v}" class="${(edItems().find(o => o.t === 'el' && o.of === it.id && String(o.el).startsWith('v:')) || {el:''}).el === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>`, P => {
+        <div class="ed-row"><span>עיטור זהב<br><small style="opacity:.7">חד בדפוס</small></span><div class="ed-chips">${[['', 'בלי'], ['v:rf-metal', 'מתכת'], ['v:rf-baroque', 'בארוק'], ['v:rf-euca1', 'אקליפטוס'], ['v:rf-euca2', 'אקליפטוס עשיר'], ['v:rf-roses', 'ורדים'], ['v:rf-silver', 'בארוק כסף'], ['v:rf-deco', 'ארט דקו'], ['v:rf-navy', 'דקו כחול'], ['v:fr-ornate', 'מעוטרת'], ['v:fr-classic', 'קלאסית'], ['v:fr-leaf', 'עלים'], ['v:fr-deco', 'קווי דקו'], ['v:cr-scroll', 'פינות']].map(([v, n]) => `<button data-vf="${v}" class="${(edItems().find(o => o.t === 'el' && o.of === it.id && String(o.el).startsWith('v:')) || {el:''}).el === v ? 'on' : ''}">${n}</button>`).join('')}</div></div>`, P => {
         slider(P, '#rB', () => it.border || 0, v => { it.border = v; if (it.borderB) it.borderB = v * 2.6; });
         slider(P, '#rS', () => it.shadow || 0, v => { it.shadow = v; it.glow = null; });
         bindSwatches(P, 'swB', c => { it.borderColor = c; if (!it.border) it.border = 1.2; });
@@ -7307,6 +7311,37 @@ Object.assign(PEAK_FAMS, {heroBleed:3, portraitGallery:2});
     event:{danceMosaic:2, heroBleed:2, filmCurve:1}, detail:{heroBleed:1}});
   add(SCENE_PLAN, {dance:{danceMosaic:6}, chuppah:{heroBleed:4, monoBand:2}, family:{heroBleed:2, portraitGallery:2}, tefillin:{heroBleed:3, scriptName:2}, torah:{heroBleed:2, scriptName:1}, speech:{heroBleed:2}});
   if (SCENE_PLAN.dance) SCENE_PLAN.dance.target = 16; }
+
+/* =========================================================
+   שלב 25 – רהיטים אמיתיים (כוורת, ארונית) שהתמונות יושבות בתוך התאים שלהם + נייר, סלוטייפ ונעצים
+   ========================================================= */
+const FURN = {
+  honey:{el:'b:fr-honey.webp', ar:.9969, shape:'hexagon', cells:[[.3326,.0351,.3224,.2644],[.6322,.1997,.3153,.2738],[.0407,.1981,.3153,.2754],[.3341,.3643,.3192,.2738],[.6307,.5273,.3146,.2761],[.0438,.5273,.313,.2746],[.3357,.7012,.3169,.2629]]},
+  cabinet:{el:'b:fr-cabinet.webp', ar:1.8241, shape:'rect', cells:[[.6602,.175,.2355,.3468],[.3723,.1759,.2546,.3468],[.1035,.1759,.2328,.346],[.5091,.5592,.3874,.3468],[.1035,.5608,.3852,.3452]]},
+};
+function genShelf(ids, G, v){
+  const T = G.T, items = [], hs = v % 2 ? 'L' : 'R', os = opp(hs);
+  const kind = ids.length - 1 >= 7 && (v >> 1) % 2 === 0 ? 'honey' : 'cabinet', F = FURN[kind], n = F.cells.length;
+  const nf = id => ((META.get(id) || {}).faces || []).filter(f => f.w >= .03).length; // לתאים – תמונות עם מעט אנשים; קבוצות לעמוד השני
+  const cellIds = ids.slice().sort((a, b) => Math.min(nf(a), 4) - Math.min(nf(b), 4)).slice(0, n), rest = ids.filter(i => !cellIds.includes(i));
+  const pr = inset(page(hs, G), G.m * .7); let fw = pr.w, fh = fw / F.ar; if (fh > pr.h){ fh = pr.h; fw = fh * F.ar; }
+  const fx = pr.x + (pr.w - fw) / 2, fy = pr.y + (pr.h - fh) / 2;
+  F.cells.forEach((c, i) => { const id = cellIds[i]; if (!id) return; const e = .012; // נכנס מעט מתחת לעץ – בלי רווח
+    items.push(P(id, {x:fx + (c[0] - e) * fw, y:fy + (c[1] - e) * fh, w:(c[2] + 2*e) * fw, h:(c[3] + 2*e) * fh}, T, {shape:F.shape, border:0, shadow:0, vignette:0, inshadow:1, cell:1})); });
+  items.push({t:'el', el:F.el, x:fx, y:fy, w:fw, h:fh, rot:0, op:1, flip:false, shadow:true, furn:1});
+  if (rest.length){ const r = inset(page(os, G), G.m);
+    if (rest.length === 1) items.push(P(rest[0], bleedPage(os, G), T, {border:0, shadow:0}));
+    else justify(rest, r, G.g * 1.6).forEach((c, i) => items.push(P(rest[i], c, T, frameOpts('wood', G, .7)))); }
+  L_KEEPFILL = true; // התאים נשארים מלאים – אחרת רואים חור ברהיט
+  return {bg:{type:'linear', c1:'#F1EADF', c2:'#E2D5C2', vertical:true}, items};
+}
+Object.assign(FAMS, {shelf:{min:6, max:14, vars:4, gen:genShelf, w:1, name:'כוורת וארונית'}});
+{ const add = (P0, o) => { for (const k in o) if (P0[k]) Object.assign(P0[k].fams, o[k]); };
+  add(CAT_PLAN, {portrait:{shelf:2}, group:{shelf:1}, detail:{shelf:2}, event:{shelf:1}});
+  add(SCENE_PLAN, {family:{shelf:2}, cake:{shelf:2}}); }
+Object.assign(EL_CATS, {scrap:'נייר וסלוטייפ', pins:'נעצים'});
+Object.keys(EV_CATS).forEach(k => { if (!EV_CATS[k].includes('scrap')) EV_CATS[k].push('scrap'); });
+VORN['v:rf-metal'] = {n:'מסגרת מתכת', kind:'rframe', ar:.8, src:'rf-metal.webp', C:990, inn:627, ratio:.3};
 
 /* =========================================================
    הפעלה
