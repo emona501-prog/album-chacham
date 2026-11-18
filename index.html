@@ -376,6 +376,10 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
 .ev-chips button.on{border-color:var(--accent);background:#FFF5EC;font-weight:700}
 .star-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .fo-grid{max-height:44vh;overflow:auto;padding:2px}
+.exv{flex-direction:column;justify-content:flex-start;align-items:stretch;background:#141110;padding:12px;overflow:auto;color:#fff}
+.exv-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;position:sticky;top:0;z-index:2;background:#141110;padding:4px 0}
+.exv-list figure{margin:0 0 16px}.exv-ph{min-height:90px;display:flex;align-items:center;justify-content:center;background:#221d1a;border-radius:6px;color:#aaa;font-size:13px}
+.exv-ph img{width:100%;display:block;border-radius:4px}.exv-list figcaption{font-size:13px;opacity:.8;margin-top:5px;text-align:center}
 .sq-list{max-height:52vh;overflow:auto;display:flex;flex-direction:column;gap:10px;margin-top:8px}
 .sq-row{display:flex;gap:10px;align-items:center}.sq-th{display:flex;gap:3px;flex:none}
 .sq-th img{width:44px;height:44px;object-fit:cover;border-radius:8px;background:#EEE7DC}
@@ -1256,6 +1260,8 @@ function closeLightbox(silent){
 }
 addEventListener('popstate', () => {
   if (ELS.skipPop){ ELS.skipPop = 0; return; }
+  { const m = [...document.querySelectorAll('.modal-scrim')].pop(); // חלון פתוח: "חזור" סוגר אותו ולא מוציא מהעמוד
+    if (m){ if (!m.dataset.busy){ const x = m.querySelector('[data-a="x"]'); if (x) x.click(); if (m.isConnected) m.remove(); } history.pushState({m:1}, ''); return; } }
   if (BK.open && !document.querySelector('.modal-scrim')) closeBook();
   else if (ELS.drawer) ELS.closeDrawer();
   else if (LB) closeLightbox();
@@ -4399,7 +4405,7 @@ async function exportFlow(pre){
     const issues = preflightAll(!!coverJob).filter(i => nos.has(i.no));
     if (issues.length){ if (!(await preflightDialog(issues))) return; }
     else toast('בדיקת דפוס: הכל תקין ✓', 2200); }
-  const s = document.createElement('div'); s.className = 'scrim modal-scrim';
+  const s = document.createElement('div'); s.className = 'scrim modal-scrim'; s.dataset.busy = '1'; // בזמן ייצוא – כפתור חזור לא סוגר
   s.innerHTML = `<div class="modal"><h3>מכין קבצים לדפוס</h3><div class="ld-wrap">${LOADER}</div>
     <ul class="ex-steps"><li><span class="spinner"></span><span id="exStep">מתחיל…</span></li></ul>
     <div class="bar" style="height:6px;background:#EFE8DD;border-radius:6px;overflow:hidden;margin-bottom:12px"><i id="exBar" style="display:block;height:100%;width:0;background:var(--accent);transition:width .3s"></i></div>
@@ -4449,6 +4455,7 @@ async function exportFlow(pre){
     const secs = ((performance.now() - t0) / 1000).toFixed(0);
     const minQ = qual.length ? Math.min(...qual.map(q => q.dpi)) : 0, ql = qualityLabel(minQ), low = qual.filter(q => q.dpi < 150).length;
     const Li = t => '⁦' + t + '⁩', G = geo(), CG = coverGeo();
+    delete s.dataset.busy;
     s.querySelector('.modal').innerHTML = `<h3>הקבצים מוכנים ✓</h3>
       ${pages.length ? `<div class="stat"><span>כפולות</span><b>${pages.length}</b></div><div class="stat"><span>גודל כפולה</span><b>${Li(G.W + '×' + G.H)} מ״מ + גלישה ${G.B}</b></div>` : ''}
       ${coverPage ? `<div class="stat"><span>כריכה · ${ct.n}</span><b>${Li(CG.W.toFixed(1) + '×' + CG.H.toFixed(1))} מ״מ</b></div>${ct.printed ? `<div class="stat"><span>שדרה</span><b>${CG.spine} מ״מ</b></div>` : ''}` : ''}
@@ -4458,6 +4465,7 @@ async function exportFlow(pre){
       ${low ? `<div class="note" style="color:var(--danger)">${low} תמונות מוגדלות יותר מדי ועלולות לצאת רכות. כדאי להחליף להן עיצוב שבו הן קטנות יותר.</div>` : ''}
       ${ct.printed && !cc.spine && coverPage ? `<div class="note">רוחב השדרה (${CG.spine} מ״מ) הוא הערכה. לפני שליחה – בקשו מבית הדפוס את המספר המדויק והכניסו אותו במסך הכריכה.</div>` : ''}
       <div class="acts col" style="margin-top:14px">
+        <button class="btn" data-a="view">👁 צפייה בקבצים לפני שליחה</button>
         <button class="btn accent" data-a="share">שיתוף / שליחה</button>
         <button class="btn ghost" data-a="dl">שמירה למכשיר</button>
         <button class="btn ghost" data-a="x" style="box-shadow:none;background:none;color:var(--muted)">סגירה</button></div>`;
@@ -4467,16 +4475,34 @@ async function exportFlow(pre){
       if (!a){ if (e.target === s) s.remove(); return; }
       if (a.dataset.a === 'x') s.remove();
       if (a.dataset.a === 'dl'){ const u = URL.createObjectURL(out), l = document.createElement('a'); l.href = u; l.download = out.name; document.body.appendChild(l); l.click(); l.remove(); setTimeout(() => URL.revokeObjectURL(u), 60000); }
-      if (a.dataset.a === 'share'){ try{ await navigator.share({files:[out], title:out.name}); }catch(_){} }
+      if (a.dataset.a === 'view'){ exportViewer((coverPage ? [Object.assign({}, coverPage, {lbl:'כריכה'})] : []).concat(pages.map(p => Object.assign({}, p, {lbl:p.test ? `${p.no} · דף בדיקה` : `כפולה ${p.no}` + (p.orig && p.orig !== p.no ? ` (באלבום: ${p.orig})` : '')})))); return; }
+      if (a.dataset.a === 'share'){ a.disabled = true; a.textContent = 'פותח שיתוף…';
+        try{ await navigator.share({files:[out], title:out.name}); }
+        catch(err){ if (!(err && err.name === 'AbortError')) toast(out.size > 40e6 ? 'הקובץ גדול מדי לשיתוף ישיר – לחצו "שמירה למכשיר" ושלחו אותו מתיקיית ההורדות' : 'השיתוף לא הצליח – אפשר לשמור למכשיר ולשלוח משם', 5000); }
+        a.disabled = false; a.textContent = 'שיתוף / שליחה'; }
     };
     window.__lastExport = out; window.__lastFiles = files;
   }catch(e){
-    console.error(e);
+    console.error(e); delete s.dataset.busy;
     s.querySelector('.modal').innerHTML = `<h3>הייצוא נכשל</h3><p>${e && e.message === 'canvas' ? 'אין מספיק זיכרון לקובץ בגודל הזה.' : 'אירעה שגיאה: ' + (e && e.message || e)}</p><div class="acts"><button class="btn" data-a="x">סגירה</button></div>`;
     s.onclick = e2 => { if (e2.target.closest('[data-a]') || e2.target === s) s.remove(); };
   }finally{ $('exportBtn').disabled = false; wakeOff(); }
 }
 $('exportBtn').onclick = () => exportFlow();
+/* צפייה בקבצים שיוצאו – בדיוק מה שיגיע לבית הדפוס (מצויר מהקבצים עצמם, בגודל מסך) */
+async function exportPreviewURL(p, W){
+  const k = W / p.W, c = document.createElement('canvas'); c.width = W; c.height = Math.round(p.H * k); const x = c.getContext('2d'); x.imageSmoothingQuality = 'high';
+  for (const st of p.strips){ const b = await createImageBitmap(st.jpeg); x.drawImage(b, 0, st.y * k, W, b.height * k); b.close(); }
+  const bl = await new Promise(r => c.toBlob(r, 'image/jpeg', .85)); c.width = c.height = 1; return URL.createObjectURL(bl);
+}
+async function exportViewer(list){
+  const v = document.createElement('div'); v.className = 'scrim modal-scrim exv';
+  v.innerHTML = `<div class="exv-top"><button class="btn ghost" data-a="x">‹ חזרה</button><b>${list.length} קבצים</b></div><div class="exv-list">${list.map((p, i) => `<figure><div class="exv-ph" data-i="${i}">טוען…</div><figcaption>${esc(p.lbl)}</figcaption></figure>`).join('')}</div>`;
+  document.body.appendChild(v); const urls = [];
+  v.onclick = e => { if (e.target.closest('[data-a="x"]')){ urls.forEach(u => URL.revokeObjectURL(u)); v.remove(); } };
+  const W = Math.min(2200, Math.round(innerWidth * (devicePixelRatio || 1)));
+  for (let i = 0; i < list.length && v.isConnected; i++){ try{ const u = await exportPreviewURL(list[i], W); urls.push(u); const ph = v.querySelector(`[data-i="${i}"]`); if (ph) ph.innerHTML = `<img src="${u}" alt="">`; }catch(err){ console.warn(err); } }
+}
 
 function layoutCover(sp){
   const G = coverGeo();
