@@ -376,6 +376,7 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
 .ev-chips button.on{border-color:var(--accent);background:#FFF5EC;font-weight:700}
 .star-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .fo-grid{max-height:44vh;overflow:auto;padding:2px}
+.col-sec{grid-column:1/-1;margin:8px 2px 0;font-size:14px}
 .exv{flex-direction:column;justify-content:flex-start;align-items:stretch;background:#141110;padding:12px;overflow:auto;color:#fff}
 .exv-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;position:sticky;top:0;z-index:2;background:#141110;padding:4px 0}
 .exv-list figure{margin:0 0 16px}.exv-ph{min-height:90px;display:flex;align-items:center;justify-content:center;background:#221d1a;border-radius:6px;color:#aaa;font-size:13px}
@@ -592,7 +593,7 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
     <button class="pill" id="fsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
   </div>
   <div class="sub-row">
-    <button id="colBtn">🧩 קולאז׳ים</button><button id="bookBtn">📖 תצוגת ספר</button><button id="shareBtn">📤 שיתוף</button><button id="addSpBtn">＋ כפולה</button><button id="styBtn">סגנון לכפולה</button><button id="clrBtn">ניקוי</button><button data-help="page">💡 הסברים</button>
+    <button id="colBtn">🧩 קולאז׳ים</button><button id="bookBtn">📖 תצוגת ספר</button><button id="shareBtn">📤 שיתוף</button><button id="morePhBtn">➕ עוד תמונות</button><button id="addSpBtn">＋ כפולה</button><button id="styBtn">סגנון לכפולה</button><button id="clrBtn">ניקוי</button><button data-help="page">💡 הסברים</button>
   </div>
   <div class="strip" id="strip"></div>
   <div class="ctrl">
@@ -3012,6 +3013,22 @@ function faceFocus(m){
   const y0 = Math.min(...main.map(f => f.y - f.h/2)), y1 = Math.max(...main.map(f => f.y + f.h/2));
   return {fx:(x0 + x1)/2, fy:(y0 + y1)/2, box:[x0, y0, x1, y1], n:main.length};
 }
+/* מיקום אנכי חכם: מעריכים את הגוף לפי הפנים (אדם עומד ≈ 7 גבהי ראש).
+   מעל הראש – רווח קטן וקבוע (כובע/ידיים), ולא "שמיים". אם כל הגוף נכנס – מראים אותו עם קרקע מתחת לרגליים;
+   אם לא – חותכים מלמטה, אבל אף סנטר לא נצמד לקצה */
+function vertFocus(m, ff, sN){
+  if (sN >= .995) return .5;
+  const F = (m.faces || []).filter(f => f.w >= .02 && f.x >= ff.box[0] - .01 && f.x <= ff.box[2] + .01 && f.y >= ff.box[1] - .01 && f.y <= ff.box[3] + .01);
+  const fh = F.length ? F.reduce((a, f) => a + f.h, 0) / F.length : (ff.box[3] - ff.box[1]);
+  const [, y0, , y1] = ff.box, head = Math.max(.7 * fh, .02), chin = .45 * fh;
+  const body = Math.min(1, Math.max(...(F.length ? F : [{y:y1, h:fh}]).map(f => f.y + f.h/2 + f.h * 6.2)));
+  const need = body - (y0 - head);
+  let top;
+  if (need <= sN) top = (y0 - head) - (sN - need) * .45;              // כל הגוף נכנס: קצת יותר מקום מתחת לרגליים מאשר מעל הראש
+  else { top = y0 - head;                                                // הגוף לא נכנס: רווח קבוע מעל הראש, חותכים מלמטה
+    if (y1 + chin > top + sN) top = Math.min(top + (y1 + chin - top - sN), y0 - head * .35); } // פנים נמוכות: לא נותנים לסנטר להיחתך
+  return clamp(top + sN/2, sN/2, 1 - sN/2);
+}
 /* כלל עיצוב: צורה מיוחדת (מעוין, לב, כוכב, עיגול…) רק כשכל הפנים נכנסות בתוכה. אחרת – מלבן */
 function shapeFits(shape, u, v){
   if (shape === 'diamond') return Math.abs(u) + Math.abs(v) <= .9;
@@ -3029,13 +3046,16 @@ function shapeSafe(it, m, ff){
   return [[U(x0), V(y0 - pad)], [U(x1), V(y0 - pad)], [U(x0), V(y1)], [U(x1), V(y1)]].every(([u, v]) => shapeFits(shape, u, v));
 }
 /* ציון איכות לעיצוב: חיתוך חזק מדי או פנים חתוכות = עיצוב פסול */
-function designScore(sp){ const L = layoutSpread(sp); const nP = L.items.filter(i => i.t === 'photo').length; return {loss:(L.loss || 0) + (L.fit || 0) * .05, cut:L.cut || 0, fit:L.fit || 0, bad:(L.loss || 0) > .5 || (L.cut || 0) > 0 || (L.fit || 0) > Math.max(1, nP * .34)}; }
+function designScore(sp){ const L = layoutSpread(sp); const nP = L.items.filter(i => i.t === 'photo').length, G = L.G || geo();
+  const cov = L.items.filter(i => i.t === 'photo').reduce((a, i) => a + Math.max(0, Math.min(i.x + i.w, G.W) - Math.max(i.x, 0)) * Math.max(0, Math.min(i.y + i.h, G.H) - Math.max(i.y, 0)), 0) / (G.W * G.H);
+  return {sparse:nP >= 2 && cov < .3, cov, loss:(L.loss || 0) + (L.fit || 0) * .05, cut:L.cut || 0, fit:L.fit || 0, bad:(L.loss || 0) > .5 || (L.cut || 0) > 0 || (L.fit || 0) > Math.max(1, nP * .34)}; }
 function pickDesign(ids, fams, rnd, idx, cat){
   const opts = [];
   for (const [f, w] of fams){ if (!fits(f, ids.length)) continue;
     for (let v = 0; v < FAMS[f].vars; v++){ const sc = designScore({fam:f, v, ids, cat}); opts.push({f, v, w, sc}); } }
   if (!opts.length) return null;
-  const good = opts.filter(o => !o.sc.bad);
+  let good = opts.filter(o => !o.sc.bad);
+  { const full = good.filter(o => !o.sc.sparse); if (full.length) good = full; } // לא כפולה עם הרבה רקע ריק כשיש חלופה מלאה יותר
   if (good.length){
     const byF = {}; good.forEach(o => (byF[o.f] = byF[o.f] || []).push(o));
     const fl = Object.keys(byF), tot = fl.reduce((a, f) => a + byF[f][0].w, 0);
@@ -3046,8 +3066,8 @@ function pickDesign(ids, fams, rnd, idx, cat){
 }
 function applyFacesOne(L, it, m, ff, G, zone){
   const b0 = it.border || 0, fa = (it.w - 2*b0) / (it.h - 2*b0);
-  const sN = coverRect(m.width, m.height, fa, it.fx, .5, it.zoom).sh / m.height, [, y0, , y1] = ff.box, top = y0 - .18*sN;
-  if (sN < .995 && y1 - top < sN * .92) it.fy = clamp(top + sN/2, 0, 1);
+  const sN = coverRect(m.width, m.height, fa, it.fx, .5, it.zoom).sh / m.height;
+  if (sN < .995) it.fy = vertFocus(m, ff, sN);
   const s = coverRect(m.width, m.height, fa, it.fx, it.fy, it.zoom), bx = ff.box.map(v => clamp(v, 0, 1)), pad = .15 * (bx[3] - bx[1]);
   if (bx[0]*m.width < s.sx - 2 || bx[2]*m.width > s.sx + s.sw + 2 || Math.max(0, bx[1] - pad)*m.height < s.sy - 2 || bx[3]*m.height > s.sy + s.sh + 2) L.cut++;
 }
@@ -3122,8 +3142,7 @@ function applyFaces0(L){
     }
     { // חיתוך אנכי: הפנים ב-20% העליונים של החלון – מקום לראש, ורואים את הגוף ולא רק את הפנים
       const sN = coverRect(m.width, m.height, fa, it.fx, .5, it.zoom).sh / m.height;
-      const [, y0, , y1] = ff.box, top = y0 - .18*sN;
-      if (sN < .995 && y1 - top < sN * .92) it.fy = clamp(top + sN/2, 0, 1);
+      if (sN < .995) it.fy = vertFocus(m, ff, sN);
     }
     { // האם כל הפנים נכנסות בחלון החיתוך?
       const s = coverRect(m.width, m.height, fa, it.fx, it.fy, it.zoom);
@@ -6661,9 +6680,10 @@ function genTemplate(ids, G, v){
 async function openCollages(){
   if (!PV.plan) return;
   const sp0 = PV.plan.spreads[PV.cur], n = sp0.ids.length;
-  if (n < 2){ toast('בכפולה הזו יש פחות משתי תמונות. הוסיפו תמונות ב"עריכה" ואז בחרו קולאז׳'); return; }
-  if (n > 12){ toast('קולאז׳ים זמינים עד 12 תמונות בכפולה. כאן יש ' + n + ' – אפשר לפצל ב"＋ כפולה"'); return; }
-  const list = tplList(n), extra = altList(Object.assign({}, sp0, {fam:sp0.fam}), PV.cur).filter(([f]) => f !== 'tpl' && f !== 'title');
+  const list = n >= 2 && n <= 12 ? tplList(n) : [], extra = altList(Object.assign({}, sp0, {fam:sp0.fam}), PV.cur).filter(([f]) => f !== 'tpl' && f !== 'title' && !SPECIAL_FAMS.includes(f));
+  // ✨ מיוחדים – תמיד מוצגים; אם חסרות תמונות, משלימים מתמונות שעוד לא בשימוש מאותו רגע
+  const spec = []; for (const f of SPECIAL_FAMS){ const F = FAMS[f]; if (!F || n > F.max) continue; const need = Math.max(0, F.min - n), fill = need ? nearUnused(sp0, need) : [];
+    if (fill.length < need) continue; for (let v = 0; v < F.vars; v++) spec.push({fam:f, v, fill}); }
   let tg = sp0.fam === 'tpl' ? (sp0.tg || 'thin') : 'thin', tf = sp0.fam === 'tpl' ? (sp0.tf || 'none') : 'none', tok = 0;
   const s = document.createElement('div'); s.className = 'scrim el-scrim';
   s.innerHTML = `<div class="sheet el-sheet col-sheet"><div class="grab"></div>
@@ -6678,13 +6698,14 @@ async function openCollages(){
     const my = ++tok;
     s.querySelectorAll('[data-tg]').forEach(b => b.classList.toggle('on', b.dataset.tg === tg));
     s.querySelectorAll('[data-tf]').forEach(b => b.classList.toggle('on', b.dataset.tf === tf));
-    const opts = list.map((t, v) => ({fam:'tpl', v})).concat(extra.map(([f, v]) => ({fam:f, v})));
+    const opts = spec.concat(list.map((t, v) => ({fam:'tpl', v})), extra.map(([f, v]) => ({fam:f, v})));
     const curKey = sp0.custom ? '' : sp0.fam + ':' + (sp0.v || 0);
-    grid.innerHTML = opts.map((o, i) => `<button data-i="${i}" class="${o.fam + ':' + o.v === curKey ? 'on' : ''}"><canvas></canvas>${o.fam !== 'tpl' ? `<small>${FAMS[o.fam].name}</small>` : ''}</button>`).join('');
+    grid.innerHTML = opts.map((o, i) => `${i === 0 && spec.length ? '<h4 class="col-sec">✨ מיוחדים</h4>' : i === spec.length ? '<h4 class="col-sec">קולאז׳ים ועיצובים</h4>' : ''}<button data-i="${i}" class="${o.fam + ':' + o.v === curKey ? 'on' : ''}"><canvas></canvas>${o.fam !== 'tpl' ? `<small>${FAMS[o.fam].name}${o.fill && o.fill.length ? ` · +${o.fill.length}` : ''}</small>` : ''}</button>`).join('');
+    grid._opts = opts;
     const cvs = [...grid.querySelectorAll('canvas')];
     for (let i = 0; i < opts.length; i++){
       if (my !== tok || !s.isConnected) return;
-      const o = opts[i], tmp = {fam:o.fam, v:o.v, ids:sp0.ids.slice(), cat:sp0.cat, tg, tf, word:sp0.word, styleId:sp0.styleId};
+      const o = opts[i], tmp = {fam:o.fam, v:o.v, ids:sp0.ids.concat(o.fill || []), cat:sp0.cat, tg, tf, word:sp0.word, styleId:sp0.styleId};
       try{ await paint(cvs[i], tmp, 150, {fold:true, maxDpr:2}); }catch(e){ console.warn(e); }
     }
   };
@@ -6695,9 +6716,10 @@ async function openCollages(){
     if (g){ tg = g.dataset.tg; draw(); return; }
     if (f){ tf = f.dataset.tf; draw(); return; }
     if (b){
-      const i = +b.dataset.i, o = i < list.length ? {fam:'tpl', v:i} : {fam:extra[i - list.length][0], v:extra[i - list.length][1]};
+      const o = grid._opts[+b.dataset.i];
       if (sp0.custom && !(await confirmBox('הכפולה נערכה ידנית', 'בחירת קולאז׳ תחליף את העריכות בכפולה הזו. התמונות נשארות.', 'להחליף', true))) return;
-      delete sp0.custom; sp0.fam = o.fam; sp0.v = o.v; if (o.fam === 'tpl'){ sp0.tg = tg; sp0.tf = tf; } else { delete sp0.tg; delete sp0.tf; }
+      delete sp0.custom; if (o.fill && o.fill.length) sp0.ids = sp0.ids.concat(o.fill.filter(id => !PV.plan.spreads.some(x => x.ids.includes(id))));
+      sp0.fam = o.fam; sp0.v = o.v; if (o.fam === 'tpl'){ sp0.tg = tg; sp0.tf = tf; } else { delete sp0.tg; delete sp0.tf; }
       savePlan(); grid.querySelectorAll('.on').forEach(x => x.classList.remove('on')); b.classList.add('on');
       await showSpread(PV.cur); repaintStripItem(PV.cur);
     }
@@ -6706,6 +6728,7 @@ async function openCollages(){
 }
 
 $('colBtn').onclick = openCollages;
+$('morePhBtn').onclick = () => addPhotosToSpread();
 
 /* ---------- עיטורים וקטוריים: מצוירים בקוד ברזולוציית היעד, ולכן חדים לגמרי בדפוס בכל גודל ---------- */
 const VORN = {
@@ -7460,7 +7483,13 @@ function genCork(ids, G, v){
 }
 /* אחרי שמירת הראשים התמונות זזות/קטנות – הנעצים והסלוטייפ עוברים איתן */
 function corkAnchors(L){
+  for (const it of L.items) if (it.hangTop != null && it.t === 'photo'){ const cx = it.x + it.w/2; it.y = it.hangTop; delete it.hangTop; } // תמונה על חבל נשארת תלויה באטב גם אם הוקטנה
   for (const it of L.items){ const p = it.anchor; if (!p) continue; delete it.anchor;
+    if (/^c(TL|TR|BR|BL)$/.test(it.at) || it.at === 'sprig'){ // פינות צילום / ענף ליד התמונה – מסתובבים יחד עם התמונה
+      const th = (p.rot || 0) * Math.PI / 180, c = Math.cos(th), s = Math.sin(th), cx = p.x + p.w/2, cy = p.y + p.h/2;
+      const q = {cTL:[-1, -1], cTR:[1, -1], cBR:[1, 1], cBL:[-1, 1], sprig:[-1, 1]}[it.at], inn = it.at === 'sprig' ? -it.w * .15 : it.w * .32;
+      const lx = q[0] * (p.w/2 - inn), ly = q[1] * (p.h/2 - inn), ax = cx + lx * c - ly * s, ay = cy + lx * s + ly * c;
+      it.x = ax - it.w/2; it.y = ay - it.h/2; it.rot = (p.rot || 0) + (it.rb || 0) + (it.at === 'sprig' ? -35 : 0); delete it.rb; continue; }
     const th = (p.rot || 0) * Math.PI / 180, cx = p.x + p.w/2, cy = p.y + p.h/2, d = p.h/2 - (it.at === 'pin' ? Math.max(2.5, p.h * .05) : 0);
     const ax = cx + Math.sin(th) * d, ay = cy - Math.cos(th) * d;
     if (it.at === 'pin'){ it.x = ax - it.w * .5; it.y = ay - it.h * .62; it.rot = (p.rot || 0) * .5; }
@@ -7485,6 +7514,170 @@ function drawElBg(ctx, L, k, ox, bg){
 Object.assign(FAMS, {cork:{min:4, max:10, vars:4, gen:genCork, w:1, name:'לוח מודעות'}});
 { const add = (P0, o) => { for (const k in o) if (P0[k]) Object.assign(P0[k].fams, o[k]); };
   add(CAT_PLAN, {group:{cork:1}, event:{cork:1}, detail:{cork:2}, portrait:{cork:1}}); add(SCENE_PLAN, {family:{cork:1}, tables:{cork:2}}); }
+
+/* =========================================================
+   שלב 27 – תמונה אחת על כל הכפולה, הוספת תמונות לכפולה, ועיצובים מיוחדים שזמינים תמיד
+   ========================================================= */
+/* תמונה על כל הכפולה (פנורמה). עם 2–3 תמונות: תמונות קטנות מונחות עליה – רק במקום שאין בו ראשים */
+function genPanorama(ids, G, v){
+  const T = G.T, items = []; ids = pickBest(ids, G.W / G.H); const hero = ids[0], rest = ids.slice(1);
+  items.push(P(hero, {x:-G.B, y:-G.B, w:G.W + 2*G.B, h:G.H + 2*G.B}, T, {border:0, shadow:0, vignette:0}));
+  const pw = Math.min(G.pw * .36, G.H * .5);
+  rest.forEach((id, i) => { const ar = clamp(asp(id), .75, 1.5), w = pw, h = w / ar, side = i % 2 ? 'L' : 'R', pr = page(side, G);
+    const xs = [pr.x + pr.w - G.m*1.4 - w, pr.x + G.m*1.4, pr.x + (pr.w - w)/2], ys = [G.H - G.m*1.4 - h, G.m*1.4];
+    const cands = []; for (const y of ys) for (const x of xs) cands.push({x, y});
+    items.push(Object.assign(P(id, {x:cands[0].x, y:cands[0].y, w, h}, T, Object.assign(frameOpts('silver', G, .6), {rot:i ? -4 : 3})), {cands})); });
+  return {bg:{type:'solid', color:T.dark}, items};
+}
+FAMS.panorama = {min:1, max:3, vars:1, gen:genPanorama, w:0, name:'תמונה על כל הכפולה'};
+
+/* האם תמונה מתאימה לכפולה שלמה: רחבה, חדה מספיק ברוחב הכפולה, ואין פנים על הקיפול */
+function panoOK(m, G){
+  if (!m || !m.width || isBlink(m)) return false;
+  const fa = G.W / G.H, ia = m.width / m.height; if (ia < 1.25) return false;
+  const dpi = Math.min(m.width / ((G.W + 2*G.B) / 25.4), m.height / ((G.H + 2*G.B) / 25.4)) * Math.max(1, fa / ia); if (dpi < 170) return false;
+  const F = (m.faces || []).filter(f => f.w >= .02); if (!F.length) return false;
+  const s = coverRect(m.width, m.height, fa, .5, .45, 1), u = f => ((f.x * m.width - s.sx) / s.sw);
+  if (F.some(f => Math.abs(u(f) - .5) < .07 + f.w * ia / fa)) return false;                  // פנים על הקיפול
+  const v = f => ((f.y * m.height - s.sy) / s.sh); if (F.some(f => v(f) - f.h / 2 * (m.height / s.sh) < .03 || v(f) > .9)) return false; // פנים שנחתכות למעלה/למטה
+  if (!F.some(f => f.w >= .05)) return false;
+  const sc = designScore({fam:'panorama', v:0, ids:[m.id]}); return !sc.cut && !sc.fit && !sc.bad; // בדיקה אמיתית: שום ראש לא נחתך ולא צריך להקטין
+}
+/* עיצובים מיוחדים (רהיטים, לוח מודעות…) – לא יותר מפעם ב-6 כפולות, אחרת הם מאבדים מהקסם */
+function spaceSpecials(spreads){
+  const RARE = ['shelf', 'cork', 'scriptName', 'monoBand', 'danceMosaic'], last = {}; let lastAny = -9;
+  spreads.forEach((sp, i) => { if (!RARE.includes(sp.fam) || sp.custom) return;
+    if (i - lastAny < 4 || i - (last[sp.fam] ?? -99) < 10){
+      const cp = CAT_PLAN[sp.cat] || CAT_PLAN.event, fams = Object.entries(cp.fams).filter(([f]) => !RARE.includes(f) && f !== 'panorama' && fits(f, sp.ids.length));
+      const pick = fams.length ? pickDesign(sp.ids, fams, mulberry32(i * 7919 + sp.ids.length), i, sp.cat) : null;
+      if (pick){ sp.fam = pick.f; sp.v = pick.v; return; } }
+    last[sp.fam] = i; lastAny = i; });
+  return spreads;
+}
+function addPanoramas(spreads){
+  if (spreads.length < 7 || (S.project && S.project.pano === false)) return spreads;
+  const G = geo(), want = Math.max(1, Math.round(spreads.length / 9)); let added = 0, lastAt = -9;
+  for (let i = 2; i < spreads.length - 1 && added < want; i++){
+    const sp = spreads[i]; if (sp.custom || sp.ids.length < 4 || i - lastAt < 5) continue;
+    const cand = sp.ids.map(id => META.get(id)).filter(m => panoOK(m, G)).sort((a, b) => ((b.faces || []).length ? 1 : 0) + (b.sharp || 0) * .01 - ((a.faces || []).length ? 1 : 0) - (a.sharp || 0) * .01)[0];
+    if (!cand) continue;
+    sp.ids = sp.ids.filter(id => id !== cand.id); delete sp.hero; fixFam(sp, i);
+    spreads.splice(i + 1, 0, {fam:'panorama', v:0, ids:[cand.id], cat:sp.cat}); added++; lastAt = i + 1; i++;
+  }
+  return spreads;
+}
+{ const _p = planAlbumSmart; planAlbumSmart = function(ps, seed){ return addPanoramas(spaceSpecials(_p(ps, seed))); }; }
+
+/* תמונות שעוד לא בשימוש – הכי קרובות בזמן לכפולה */
+function nearUnused(sp, k){
+  const used = new Set(PV.plan.spreads.flatMap(s => s.ids)), t = p => p.taken || p.lastModified || 0;
+  const ts = sp.ids.map(id => t(META.get(id) || {})).filter(Boolean).sort((a, b) => a - b), mid = ts.length ? ts[ts.length >> 1] : 0;
+  return albumPhotos().filter(p => !used.has(p.id) && !isBlink(p)).sort((a, b) => Math.abs(t(a) - mid) - Math.abs(t(b) - mid)).slice(0, k).map(p => p.id);
+}
+async function addPhotosToSpread(){
+  const sp = PV.plan.spreads[PV.cur]; if (!sp) return;
+  const add = nearUnused(sp, sp.ids.length <= 2 ? 3 : 2);
+  if (!add.length){ toast('אין תמונות שעוד לא בשימוש. אפשר להוסיף מהגלריה ב"עריכה" ← "תמונה"'); return; }
+  if (sp.custom && !(await confirmBox('הכפולה נערכה ידנית', 'הוספת תמונות תסדר את הכפולה מחדש ותבטל את העריכות בה.', 'להוסיף ולסדר', true))) return;
+  delete sp.custom; sp.ids = sp.ids.concat(add);
+  const cp = CAT_PLAN[sp.cat] || CAT_PLAN.event, fams = Object.entries(cp.fams).filter(([f]) => fits(f, sp.ids.length));
+  const pick = pickDesign(sp.ids, fams.length ? fams : Object.keys(FAMS).filter(f => f !== 'title' && f !== 'tpl' && f !== 'panorama').map(f => [f, 1]), mulberry32(Date.now() % 1e9), PV.cur, sp.cat);
+  if (pick){ sp.fam = pick.f; sp.v = pick.v; } else fixFam(sp, PV.cur);
+  savePlan(); await showSpread(PV.cur); repaintStripItem(PV.cur); if (typeof paintStrip === 'function') paintStrip();
+  toast(`נוספו ${add.length} תמונות מאותו רגע ✓`);
+}
+const SPECIAL_FAMS = ['shelf', 'cork', 'heroBleed', 'monoBand', 'portraitGallery', 'filmCurve', 'scriptName', 'danceMosaic', 'panorama'];
+
+/* =========================================================
+   שלב 28 – עוד סגנונות ברוח לוח המודעות: חבל כביסה, לוח גיר, שולחן עץ, ספר זיכרונות (קרפט), קיר גלריה
+   ========================================================= */
+const BOARD_BG = {line:{el:'b:bg-line.webp', ar:2.3568}, chalk:{el:'b:bg-chalk.webp', ar:2.3568}, wood:{el:'b:bg-wood.webp', ar:2.3568}, kraft:{el:'b:bg-kraft.webp', ar:2.3568}, wall:{el:'b:bg-wall.webp', ar:2.3568}};
+const LINE_PEGS = [[.1132,.6368],[.221,.6853],[.3316,.7237],[.444,.7392],[.5547,.7392],[.6638,.7237],[.7727,.6871],[.8879,.6368]];
+const DRIED = ['k01','k02','k03','k04','k05','k06','k07','k08','k09','k10'].map(f => 'b:' + f + '.webp');
+const GFRAMES = [
+  {el:'b:g01.webp', ar:.8468, win:[.2122,.1797,.5756,.6406]}, {el:'b:g02.webp', ar:1.303, win:[.1198,.156,.7605,.688]},
+  {el:'b:g03.webp', ar:.9965, win:[.2018,.2011,.5964,.5978]}, {el:'b:g04.webp', ar:.7996, win:[.1792,.1433,.6416,.7134]},
+  {el:'b:g05.webp', ar:.7705, win:[.0802,.0618,.8397,.8764]}, {el:'b:g06.webp', ar:.8129, win:[.1516,.1232,.6969,.7536], oval:1},
+  {el:'b:g07.webp', ar:1.2248, win:[.1572,.1925,.6857,.615]}, {el:'b:g08.webp', ar:.8377, win:[.1863,.156,.6275,.688]},
+  {el:'b:g09.webp', ar:.7978, win:[.1452,.1158,.7097,.7685]}];
+/* מיקום תמונת הרקע כמו ש-drawElBg מצייר אותה (cover על כל הגלישה) */
+function bgRect(G, ar){ const BW = G.W + 2*G.B, BH = G.H + 2*G.B; let w = BW, h = BW / ar; if (h < BH){ h = BH; w = BH * ar; } return {x:-G.B + (BW - w)/2, y:-G.B + (BH - h)/2, w, h}; }
+const RND = (ids, v) => { let s = 7; for (const id of ids) for (const ch of String(id)) s = (s * 31 + ch.charCodeAt(0)) >>> 0; s = (s + v * 977) >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); };
+const printOpts = (G, w, h, R, rmax) => ({border:Math.max(1.5, Math.min(w, h) * .035), borderColor:'#FBF8F1', shadow:.85, rot:(R() - .5) * 2 * rmax, vignette:0});
+/* חבל כביסה: כל תמונה תלויה באטב אמיתי מהצילום; האטב מצויר מעל התמונה */
+function genLine(ids, G, v){
+  const T = G.T, items = [], R = RND(ids, v), B = bgRect(G, BOARD_BG.line.ar);
+  const pegs = LINE_PEGS.map(([px, py]) => ({x:B.x + px * B.w, y:B.y + py * B.h})).filter(p => p.x > G.m && p.x < G.W - G.m);
+  const sp = pegs.length > 1 ? (pegs[pegs.length - 1].x - pegs[0].x) / (pegs.length - 1) : G.W / 4;
+  const ok0 = pegs.filter(p => Math.abs(p.x - G.pw) > sp * .5);             // לא תולים על הקיפול
+  const step = Math.max(1, Math.min(2, Math.floor(ok0.length / Math.max(1, ids.length)))), pw = sp * step * .88; // מעט תמונות → תמונות גדולות יותר
+  const ok = ok0.length >= ids.length ? ok0 : pegs;                          // אף תמונה לא נשמטת
+  const n = Math.min(ids.length, ok.length), pick = []; for (let i = 0; i < n; i++) pick.push(ok[Math.min(ok.length - 1, Math.round(i * (ok.length - 1) / Math.max(1, n - 1)))]);
+  const clampLen = B.h * .055;
+  ids.slice(0, n).forEach((id, i) => { const p = pick[i], ar = clamp(asp(id), .72, 1.35); let w = pw, h = w / ar; const top = p.y - clampLen, maxH = G.H - G.m - top; if (h > maxH){ h = maxH; w = h * ar; }
+    const ph = P(id, {x:p.x - w/2, y:top, w, h}, T, Object.assign(printOpts(G, w, h, R, 1.6), {hangTop:top})); items.push(ph); });
+  items.push({t:'el', el:'b:ov-line.webp', x:B.x, y:B.y, w:B.w, h:B.h, rot:0, op:1, flip:false, fixed:1});
+  return {bg:{type:'elbg', el:BOARD_BG.line.el}, items};
+}
+/* לוח גיר / שולחן עץ / קרפט: תמונות מודפסות + קישוט לפי הסגנון */
+function genBoard(kind){ return (ids, G, v) => {
+  const T = G.T, items = [], R = RND(ids, v), half = Math.ceil(ids.length / 2);
+  const note = (kind === 'chalk' || kind === 'kraft') && v % 2 === 0, word = note ? spreadWord() : '';
+  ['R', 'L'].forEach((side, si) => {
+    const part = si ? ids.slice(half) : ids.slice(0, half); if (!part.length) return;
+    let r = inset(page(side, G), G.m * 1.4, G.m * 1.2);
+    if (word && si === 0){ const th = Math.min(r.h * .2, 34);
+      if (kind === 'chalk') items.push({t:'text', x:r.x, y:r.y, w:r.w, h:th, text:word, font:'"Amatic SC"', weight:700, size:th * .8, color:'rgba(245,245,240,.92)'});
+      else { const nw = Math.min(r.w * .5, 100), nh = th * 1.15, nx = r.x + (r.w - nw) / 2;
+        items.push({t:'el', el:'b:s03.webp', x:nx, y:r.y, w:nw, h:nh, rot:-2, op:1, flip:false, shadow:true});
+        items.push({t:'text', x:nx + nw*.08, y:r.y + nh*.15, w:nw*.84, h:nh*.7, text:word, font:'"Amatic SC"', weight:700, size:nh*.5, color:'#3A2A1C', rot:-2});
+        items.push({t:'el', el:'b:k24.webp', x:nx + nw*.72, y:r.y - nh*.25, w:nh*.9, h:nh*.9*.66, rot:8, op:1, flip:false, shadow:true}); }
+      r = {x:r.x, y:r.y + th + G.g * 2, w:r.w, h:r.h - th - G.g * 2}; }
+    justify(part, r, G.g * 3).forEach((c, i) => {
+      const s = .87, w = c.w * s, h = c.h * s, x = c.x + (c.w - w)/2 + (R() - .5) * c.w * .05, y = c.y + (c.h - h)/2 + (R() - .5) * c.h * .05;
+      const ph = P(part[i], {x, y, w, h}, T, printOpts(G, w, h, R, kind === 'wood' ? 4 : 2.5)); items.push(ph);
+      const cs = clamp(Math.min(w, h) * .16, 7, 22);
+      if (kind === 'kraft' || kind === 'chalk'){ const el = kind === 'chalk' ? 'b:k21.webp' : 'b:k20.webp', base = kind === 'chalk' ? -90 : 0; // פינות צילום
+        ['cTL', 'cTR', 'cBR', 'cBL'].forEach((at, q) => items.push({t:'el', el, x:0, y:0, w:cs, h:cs, rot:0, op:1, flip:false, shadow:true, anchor:ph, at, rb:base + q * 90})); }
+      if (kind === 'wood'){ if ((i + si) % 2 === 0){ const tw = clamp(w * .4, 16, 50); items.push({t:'el', el:CORK_TAPES[(i + si) % CORK_TAPES.length], x:0, y:0, w:tw, h:tw * .26, rot:0, op:.9, flip:false, anchor:ph, at:'tape'}); }
+        if ((i * 3 + si) % 4 === 1){ const d = DRIED[Math.floor(R() * DRIED.length)], dh = clamp(h * .55, 22, 70); items.push({t:'el', el:d, x:0, y:0, w:dh * .8, h:dh, rot:0, op:1, flip:false, shadow:true, anchor:ph, at:'sprig'}); } }
+    });
+  });
+  if (kind === 'kraft'){ items.push({t:'el', el:'b:k26.webp', x:G.W - G.m * 1.6 - 14, y:G.H - G.m * 1.4 - 24, w:14, h:24, rot:18, op:1, flip:false, shadow:true}); }
+  return {bg:{type:'elbg', el:BOARD_BG[kind].el}, items};
+}; }
+/* קיר גלריה: מסגרות אמיתיות תלויות על קיר טפט, התמונה בתוך חלון המסגרת */
+function genGallery(ids, G, v){
+  const T = G.T, items = [], B = bgRect(G, BOARD_BG.wall.ar), wallBottom = Math.min(G.H - G.m, B.y + B.h * .79) - G.g * 3, half = Math.ceil(ids.length / 2), used = {};
+  ['R', 'L'].forEach((side, si) => {
+    const part = si ? ids.slice(half) : ids.slice(0, half); if (!part.length) return;
+    const pr = page(side, G), r = {x:pr.x + G.m * 1.3, y:G.m * 1.4, w:pr.w - G.m * 2.6, h:wallBottom - G.m * 1.4};
+    justify(part, r, G.g * 5).forEach((c, i) => {
+      const id = part[i], car = c.w / c.h;
+      const fr = GFRAMES.slice().sort((a, b) => Math.abs(Math.log(a.ar * a.win[2] / a.win[3] / car)) + (used[a.el] || 0) * .25 - Math.abs(Math.log(b.ar * b.win[2] / b.win[3] / car)) - (used[b.el] || 0) * .25)[(v + i) % 2 && part.length > 2 ? 1 : 0];
+      used[fr.el] = (used[fr.el] || 0) + 1;
+      let fw = c.w, fh = fw / fr.ar; if (fh > c.h){ fh = c.h; fw = fh * fr.ar; }
+      const fx = c.x + (c.w - fw)/2, fy = c.y + (c.h - fh)/2, e = .006;
+      items.push(P(id, {x:fx + (fr.win[0] - e) * fw, y:fy + (fr.win[1] - e) * fh, w:(fr.win[2] + 2*e) * fw, h:(fr.win[3] + 2*e) * fh}, T, {border:0, shadow:0, vignette:0, shape:fr.oval ? 'oval' : undefined, cell:1, inshadow:1}));
+      items.push({t:'el', el:fr.el, x:fx, y:fy, w:fw, h:fh, rot:0, op:1, flip:false, shadow:true, frameOf:1});
+    });
+  });
+  L_KEEPFILL = true;
+  return {bg:{type:'elbg', el:BOARD_BG.wall.el}, items};
+}
+Object.assign(FAMS, {
+  clothesline:{min:3, max:6, vars:2, gen:genLine, w:1, name:'חבל כביסה'},
+  chalk:      {min:3, max:8, vars:2, gen:genBoard('chalk'), w:1, name:'לוח גיר'},
+  woodTable:  {min:3, max:9, vars:2, gen:genBoard('wood'), w:1, name:'שולחן עץ'},
+  kraftBook:  {min:3, max:8, vars:2, gen:genBoard('kraft'), w:1, name:'ספר זיכרונות'},
+  galleryWall:{min:3, max:8, vars:2, gen:genGallery, w:1, name:'קיר גלריה'},
+});
+SPECIAL_FAMS.splice(2, 0, 'clothesline', 'galleryWall', 'woodTable', 'kraftBook', 'chalk');
+{ const add = (P0, o) => { for (const k in o) if (P0[k]) Object.assign(P0[k].fams, o[k]); };
+  add(CAT_PLAN, {portrait:{galleryWall:1, clothesline:1}, group:{woodTable:1, galleryWall:1}, detail:{kraftBook:1, woodTable:1}, event:{clothesline:1, chalk:1}});
+  add(SCENE_PLAN, {family:{galleryWall:2}, tables:{woodTable:1}, kids:{chalk:2, clothesline:1}}); }
+Object.assign(EL_CATS, {dried:'פרחים מיובשים'});
+Object.keys(EV_CATS).forEach(k => { if (!EV_CATS[k].includes('dried')) EV_CATS[k].push('dried'); });
 
 /* =========================================================
    הפעלה
