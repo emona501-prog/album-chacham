@@ -865,7 +865,7 @@ function enqueue(fileList){
 }
 
 async function runQueue(){
-  Q.active = true; Q.cancel = false;
+  Q.active = true; Q.cancel = false; AN.passes = 0;
   $('pgStop').classList.remove('hidden');
   $('progress').classList.remove('hidden'); renderEmpty();
   wakeOn();
@@ -877,11 +877,12 @@ async function runQueue(){
   report();
   startAnalysis();
 }
+const withTO = (pr, ms, msg) => Promise.race([pr, new Promise((_, rej) => setTimeout(() => rej(new Error(msg || 'timeout')), ms))]); // שום שלב לא נתקע לנצח
 async function lane(i){
   while (Q.items.length && !Q.cancel){
     const item = Q.items.shift();
     try{
-      const r = await Proc.run(i, item.file);
+      const r = await withTO(Proc.run(i, item.file), 60000, 'עיבוד התמונה נתקע');
       await savePhoto(item, r);
       Q.added++;
     }catch(e){
@@ -1093,7 +1094,7 @@ const grid = $('grid');
 
 function renderEmpty(){
   const n = S.photos.length;
-  $('toAlbum').disabled = n === 0 || Q.active || AN.active;
+  $('toAlbum').disabled = n === 0 || Q.active; // אפשר להמשיך גם כשהניתוח עוד רץ
   $('empty').classList.toggle('hidden', n > 0 || Q.active);
   $('gHead').classList.toggle('hidden', n === 0);
   const outN = S.photos.filter(p => p.out).length;
@@ -2283,6 +2284,8 @@ function orderedIds(){ return S.photos.slice().sort((a, b) => (a.lastModified - 
 
 async function openPage(){
   if (!S.photos.length || Q.active) return;
+  if (AN.active){ const go = await confirmBox('הניתוח עוד רץ', `נותחו ${AN.done} מתוך ${AN.total} תמונות. אפשר להמשיך כבר עכשיו – כשהניתוח יסתיים האלבום יסודר מחדש אוטומטית.`, 'להמשיך עכשיו');
+    if (!go) return; openPage.partial = true; }
   current = 'page'; PV.active = true;
   META = new Map(S.photos.map(p => [p.id, p]));
   $('viewGallery').classList.add('hidden'); $('barGallery').classList.add('hidden');
@@ -2725,7 +2728,7 @@ async function fdInitLegacy(){
 async function fdInitTasks(){
   const mod = await import(TV_BASE() + 'vision_bundle.mjs');
   const fs = await mod.FilesetResolver.forVisionTasks(TV_BASE() + 'wasm');
-  return await mod.FaceDetector.createFromOptions(fs, {baseOptions:{modelAssetPath:TV_MODEL(), delegate:'CPU'}, runningMode:'IMAGE', minDetectionConfidence:.5});
+  return await withTO(mod.FaceDetector.createFromOptions(fs, {baseOptions:{modelAssetPath:TV_MODEL(), delegate:'CPU'}, runningMode:'IMAGE', minDetectionConfidence:.5}), 40000, 'זמן טעינה ארוך מדי');
 }
 async function fdInit(force){
   if ((FD.inst || FD.failed) && !force) return FD.inst;
@@ -2793,7 +2796,7 @@ async function startAnalysis(){
   AN.active = true; AN.total = todo.length; AN.done = 0;
   renderEmpty(); showAnProgress();
   await wakeOn();
-  const fd = await fdInit();
+  const fd = await withTO(fdInit(), 90000, 'fd').catch(() => { FD.failed = true; return null; });
   if (!fd && !AN.faceFail){ AN.faceFail = true; toast('זיהוי פנים דורש חיבור לאינטרנט בפעם הראשונה. ממשיך בלי זיהוי פנים.', 6000); }
   let checked = 0, found = 0;
   for (let ti = 0; ti < todo.length; ti++){
@@ -2807,9 +2810,13 @@ async function startAnalysis(){
       const tb = await DB.get('thumbs', m.id);
       if (tb){ const bmp = await createImageBitmap(tb); Object.assign(m, pixelStats(bmp)); bmp.close(); }
       const needFaces = !((m.an || 0) >= 4 && Array.isArray(m.faces)); // גרסה 4: זיהוי מחדש עם ציון ביטחון
-      if (fd && needFaces){
+      if (fd && needFaces && !FD.failed){
         const pb = await DB.get('previews', m.id);
-        if (pb){ const bmp = await createImageBitmap(pb); m.faces = await detectFaces(bmp); bmp.close(); }
+        if (pb){ const bmp = await createImageBitmap(pb);
+          try{ m.faces = await withTO(detectFaces(bmp), 20000, 'faces'); }
+          catch(err){ m.faces = null; AN.hangs = (AN.hangs || 0) + 1; // זיהוי פנים נתקע במכשיר הזה – אחרי פעמיים ממשיכים בלעדיו
+            if (AN.hangs >= 2){ FD.failed = true; FD.inst = null; FD.err = 'זיהוי הפנים נתקע במכשיר'; } }
+          bmp.close(); }
       } else if (needFaces) m.faces = null;
       if (Array.isArray(m.faces) && needFaces){ checked++; if (m.faces.length) found++; }
       // המנוע הראשי לא מוצא אף פנים ב-12 תמונות? כנראה לא עובד במכשיר – עוברים למנוע הגיבוי ומתחילים מחדש
@@ -2825,7 +2832,10 @@ async function startAnalysis(){
     await new Promise(r => setTimeout(r, 0));
   }
   AN.active = false; wakeOff();
-  if (S.photos.some(p => (p.an || 0) < AN_VER) && !FD.failed){ startAnalysis(); return; }
+  AN.passes = (AN.passes || 0) + 1;
+  if (S.photos.some(p => (p.an || 0) < AN_VER) && !FD.failed && AN.passes < 3){ startAnalysis(); return; } // לא חוזרים בלולאה אינסופית
+  if (openPage.partial && current === 'page' && PV.plan){ openPage.partial = false; // נכנסו לאלבום באמצע הניתוח – מסדרים מחדש עם כל המידע
+    try{ PV.plan.spreads = replanKeepCustom(PV.plan.spreads, PV.plan.seed); savePlan(); buildStrip(); showSpread(Math.min(PV.cur, PV.plan.spreads.length - 1)); toast('הניתוח הסתיים – האלבום סודר מחדש ✓'); }catch(e){ console.warn(e); } }
   computeSelection();
   $('progress').classList.add('hidden');
   renderEmpty(); scheduleGrid();
