@@ -327,6 +327,27 @@ h1{font-family:"Frank Ruhl Libre",serif;font-size:30px;line-height:1.2;margin:18
 .pk-stack img{width:100%;height:100%;object-fit:cover;display:block}
 .ed-th span{position:absolute;bottom:3px;right:3px;background:rgba(0,0,0,.6);color:#fff;font-size:10px;padding:2px 5px;border-radius:5px}
 .ed-th.cur{outline:3px solid var(--accent);outline-offset:-3px}
+.ed-th em{position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font:700 13px/24px inherit;text-align:center;font-style:normal;display:none;box-shadow:0 1px 4px rgba(0,0,0,.35)}
+.ed-th.sel{outline:3px solid var(--accent);outline-offset:-3px}.ed-th.sel em{display:block}.ed-th.sel img{opacity:.82}
+.pk-foot{display:flex;align-items:center;gap:10px;padding:10px 2px 2px;border-top:1px solid rgba(0,0,0,.06);margin-top:6px}
+.pk-foot .pk-n{flex:1;font-size:13.5px;color:var(--muted)}.pk-foot .btn{flex:0 0 auto;width:auto;padding:12px 20px;font-size:15px}
+.pk-foot .btn:disabled{opacity:.45}
+.dup-th{width:92px;height:92px;border-radius:14px;object-fit:cover;display:block;margin:0 auto 12px;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.dup-acts{display:flex;flex-direction:column;gap:8px}.dup-acts .btn{width:100%;padding:11px 12px;font-size:15.5px;box-shadow:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;text-align:center}
+.dup-acts .btn small{display:block;font-weight:400;font-size:12px;opacity:.8;margin-top:2px}
+.dup-all{display:flex;align-items:center;gap:8px;justify-content:center;font-size:13.5px;color:var(--muted);margin:2px 0 12px}
+.dup-all input{width:18px;height:18px;accent-color:var(--accent)}
+.ed-ret{background:#fff;color:#1c1714;border-radius:12px;padding:9px 12px;font-weight:700;font-size:13.5px;white-space:nowrap}
+.pg-ret{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));z-index:60;background:#1c1714;color:#fff;border-radius:999px;padding:11px 18px;font-weight:700;font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,.3)}
+.dsc-row{display:flex;gap:12px;align-items:flex-start;padding:12px 0;border-bottom:1px solid rgba(0,0,0,.07)}
+.dsc-row img{width:74px;height:74px;border-radius:12px;object-fit:cover;flex:0 0 auto}
+.dsc-row .dsc-b{flex:1;min-width:0}.dsc-row b{display:block;font-size:14.5px;margin-bottom:6px}
+.dsc-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.dsc-chips button{border-radius:999px;padding:6px 11px;font-size:13px;background:var(--surface);box-shadow:var(--shadow)}
+.dsc-keep{display:flex;flex-wrap:wrap;gap:6px}.dsc-keep button{border-radius:10px;padding:7px 10px;font-size:12.5px;background:rgba(168,85,46,.1);color:var(--accent);font-weight:700}
+.dsc-keep button.ok{background:rgba(0,0,0,.06);color:var(--muted)}
+.dsc-empty{text-align:center;padding:30px 10px;color:var(--muted);font-size:15px}
+
 
 /* ---------- toast ---------- */
 .toasts{position:fixed;z-index:90;inset-inline:0;bottom:calc(96px + var(--safe-b));display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;padding:0 16px}
@@ -593,7 +614,7 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
     <button class="pill" id="fsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
   </div>
   <div class="sub-row">
-    <button id="colBtn">🧩 קולאז׳ים</button><button id="bookBtn">📖 תצוגת ספר</button><button id="shareBtn">📤 שיתוף</button><button id="morePhBtn">➕ עוד תמונות</button><button id="addSpBtn">＋ כפולה</button><button id="styBtn">סגנון לכפולה</button><button id="clrBtn">ניקוי</button><button data-help="page">💡 הסברים</button>
+    <button id="colBtn">🧩 קולאז׳ים</button><button id="bookBtn">📖 תצוגת ספר</button><button id="shareBtn">📤 שיתוף</button><button id="morePhBtn">➕ עוד תמונות</button><button id="addSpBtn">＋ כפולה</button><button id="styBtn">סגנון לכפולה</button><button id="clrBtn">ניקוי</button><button id="dupScanBtn">🔍 סורק כפילויות</button><button data-help="page">💡 הסברים</button>
   </div>
   <div class="strip" id="strip"></div>
   <div class="ctrl">
@@ -2313,6 +2334,7 @@ async function openPage(){
     plan = {id:S.project.id + '_album', projectId:S.project.id, seed, sig, cover:plan && !(forceRe && plan.cover && !plan.cover.custom) ? plan.cover : undefined, spreads:plan ? replanKeepCustom(plan.spreads, seed) : planAlbumSmart(inAlbum, seed)};
     await DB.put('pages', plan).catch(() => {});
   }
+  { const nFix = fixBadPanoramas(plan); if (nFix){ await DB.put('pages', plan).catch(() => {}); setTimeout(() => toast(nFix === 1 ? 'תיקנתי כפולה שבה תמונה אחת על כל הכפולה חתכה ראשים – התמונה הוחזרה לכפולה הסמוכה' : `תיקנתי ${nFix} כפולות שבהן תמונה אחת על כל הכפולה חתכה ראשים`, 5000), 600); } }
   PV.plan = plan; PV.cur = Math.min(PV.cur, plan.spreads.length - 1);
   buildStrip(); await showSpread(PV.cur);
 }
@@ -3228,6 +3250,8 @@ async function openEditor(arg){
     if (a.dataset.a === 'undo') edUndo(-1);
     if (a.dataset.a === 'redo') edUndo(1);
   });
+  el.querySelector('.ed-stage').addEventListener('click', e => { if (e.target.classList.contains('ed-stage')) edFix(); });
+  el.querySelector('.ed-hint').addEventListener('click', () => edFix());
   edBindPointer();
   edLayoutSize(); edTools();
   await loadFonts();
@@ -3609,13 +3633,7 @@ function edAction(a, btn){
   const it = edSel(), its = edItems(), G = edGeo(), T = G.T, V = edView();
   const toggleSame = name => { if (ED.panel === name){ ED.panel = null; ED.el.querySelector('.ed-panel').innerHTML = ''; return true; } ED.panel = name; return false; };
   switch (a){
-    case 'addPhoto': return pickPhoto('בחירת תמונה להוספה', id => {
-      pushUndo();
-      const ar = clamp(asp(id), .6, 1.7), h = V.vh * .42, w = h * ar;
-      const ni = P(id, {x:V.vx + V.vw/2 - w/2, y:V.vy + V.vh/2 - h/2, w, h}, T, {border:Math.max(T.border, 1), shadow:.6});
-      const ff = faceFocus(META.get(id) || {}); if (ff){ ni.fx = ff.fx; ni.fy = ff.fy; }
-      takeFromOthers(id); its.push(ni); ED.sel = its.length - 1; commit(); edTools(); edLoadImgs().then(edRender);
-    });
+    case 'addPhoto': return pickPhoto('בחירת תמונות להוספה', ids => edAddPhotos(ids), null, null, {multi:true});
     case 'addText': {
       pushUndo();
       its.push({t:'text', x:V.vx + V.vw*.15, y:V.vy + V.vh*.4, w:V.vw*.7, h:V.vh*.16, text:S.project.word || eventWord(), font:T.font, weight:T.fontW, size:G.H*.07, color:T.ink, rot:0});
@@ -3668,10 +3686,16 @@ function edAction(a, btn){
           if (b.dataset.g === 'fit'){ delete it.uc; it.zoom = 1; it.fx = .5; it.fy = .4; P.querySelector('#rZoom').value = 1; }
           commit(); edRender(); });
       }); } edRender(); return;
-    case 'swap': return pickPhoto('החלפת תמונה', id => {
-      pushUndo();
+    case 'swap': return pickPhoto('החלפת תמונה', async id => {
       const other = its.find(o => o !== it && o.t === 'photo' && o.id === id);
-      if (other){ other.id = it.id; } else takeFromOthers(id);
+      if (!other && !ED.cover){
+        const el = dupWhere(id);
+        if (el.length){ const d = await askDup(id, el, false, 0, true); if (d.mode === 'skip') return;
+          if (d.mode === 'goto'){ edGotoSpread(el[0], null); return; }
+          if (d.mode === 'move') el.slice().sort((a, b) => b - a).forEach(i => removePhotoFrom(i, id)); }
+      }
+      pushUndo();
+      if (other){ other.id = it.id; }
       it.id = id; it.zoom = 1;
       const ff = faceFocus(META.get(id) || {}); it.fx = ff ? ff.fx : .5; it.fy = ff ? ff.fy : .35;
       commit(); edLoadImgs().then(edRender);
@@ -3829,7 +3853,8 @@ function edEditText(){
   };
 }
 /* בוחר תמונות: כל תמונות הפרויקט, עם סימון איפה כל אחת נמצאת */
-function pickPhoto(title, cb, currentId, startTab){
+function pickPhoto(title, cb, currentId, startTab, opts){
+  const multi = !!(opts && opts.multi), chosen = [];
   const where = new Map();
   PV.plan.spreads.forEach((sp, i) => sp.ids.forEach(id => where.set(id, i)));
   const ps = S.photos.slice().sort((a, b) => (a.taken || a.lastModified) - (b.taken || b.lastModified));
@@ -3841,15 +3866,18 @@ function pickPhoto(title, cb, currentId, startTab){
   s.innerHTML = `<div class="sheet ed-pick"><div class="grab"></div><div class="pk-head"><h3>${title}</h3><button class="pk-gal" data-a="gal">📱 מהגלריה</button></div>
     <div class="ed-tabs"><button data-f="dirs">📁 תיקיות</button><button data-f="all">הכל (${ps.length})</button><button data-f="free">לא בשימוש (${unused})</button><button data-f="here">בכפולה הזו</button></div>
     <div class="pk-crumb hidden"><button data-a="up">‹ כל התיקיות</button><b></b></div>
-    <div class="ed-grid"></div></div>`;
+    <div class="ed-grid"></div>${multi ? '<div class="pk-foot"><span class="pk-n">אפשר לבחור כמה תמונות</span><button class="btn pk-ok" data-a="ok" disabled>הוספה</button></div>' : ''}</div>`;
   document.body.appendChild(s);
   const grid = s.querySelector('.ed-grid'), crumb = s.querySelector('.pk-crumb');
+  const updFoot = () => { if (!multi) return; const b = s.querySelector('.pk-ok'); b.disabled = !chosen.length; b.textContent = chosen.length ? `הוספת ${chosen.length} ${chosen.length === 1 ? 'תמונה' : 'תמונות'}` : 'הוספה';
+    s.querySelector('.pk-n').textContent = chosen.length ? 'לחיצה נוספת מבטלת בחירה' : 'אפשר לבחור כמה תמונות';
+    grid.querySelectorAll('.ed-th').forEach(t => { const k = chosen.indexOf(t.dataset.id), em = t.querySelector('em'); t.classList.toggle('sel', k >= 0); if (em) em.textContent = k >= 0 ? k + 1 : ''; }); };
   const tile = p => { const b = document.createElement('button'); b.className = 'ed-th' + (p.id === currentId ? ' cur' : '');
     const w = where.has(p.id) ? (where.get(p.id) === PV.cur ? 'כאן' : 'כפולה ' + (where.get(p.id) + 1)) : '';
-    b.innerHTML = `<img alt="" loading="lazy">${w ? `<span>${w}</span>` : ''}`;
+    b.innerHTML = `<img alt="" loading="lazy">${w ? `<span>${w}</span>` : ''}${multi ? '<em></em>' : ''}`; b.dataset.id = p.id;
     thumbURL(p.id).then(u => { if (u) b.querySelector('img').src = u; });
-    b.onclick = () => { s.remove(); cb(p.id); }; return b; };
-  const list = arr => { grid.className = 'ed-grid'; grid.innerHTML = ''; arr.forEach(p => grid.appendChild(tile(p))); };
+    b.onclick = () => { if (multi){ const k = chosen.indexOf(p.id); if (k >= 0) chosen.splice(k, 1); else chosen.push(p.id); updFoot(); return; } s.remove(); cb(p.id); }; return b; };
+  const list = arr => { grid.className = 'ed-grid'; grid.innerHTML = ''; arr.forEach(p => grid.appendChild(tile(p))); updFoot(); };
   const dirs = () => { crumb.classList.add('hidden'); grid.className = 'ed-grid pk-dirs'; grid.innerHTML = '';
     folders.forEach(f => { const b = document.createElement('button'); b.className = 'pk-dir';
       const pick3 = [f.items[0], f.items[Math.floor(f.items.length / 2)], f.items[f.items.length - 1]].filter((x, i, a) => x && a.indexOf(x) === i);
@@ -3866,6 +3894,7 @@ function pickPhoto(title, cb, currentId, startTab){
     const t = e.target.closest('[data-f]'); if (t) render(t.dataset.f);
     const a = e.target.closest('[data-a]');
     if (a && a.dataset.a === 'up') dirs();
+    if (a && a.dataset.a === 'ok' && chosen.length){ s.remove(); cb(chosen.slice()); return; }
     if (a && a.dataset.a === 'gal'){ // תמונות חדשות ישר מהגלריה של הטלפון
       const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*,.heic,.heif'; inp.multiple = true;
       inp.onchange = async () => { const fs = [...inp.files]; if (!fs.length) return;
@@ -3873,6 +3902,7 @@ function pickPhoto(title, cb, currentId, startTab){
         while (Q.active) await new Promise(r => setTimeout(r, 300));
         const fresh = S.photos.filter(p => !before.has(p.id)); fresh.forEach(p => META.set(p.id, p));
         if (!fresh.length) return;
+        if (multi){ cb(chosen.concat(fresh.map(p => p.id))); return; }
         if (fresh.length === 1) cb(fresh[0].id);
         else { toast(`נוספו ${fresh.length} תמונות – בחרו איזו להכניס`, 3000); pickPhoto(title, cb, currentId, 'free'); } };
       inp.click(); }
@@ -7535,13 +7565,56 @@ FAMS.panorama = {min:1, max:3, vars:1, gen:genPanorama, w:0, name:'תמונה ע
 function panoOK(m, G){
   if (!m || !m.width || isBlink(m)) return false;
   const fa = G.W / G.H, ia = m.width / m.height; if (ia < 1.25) return false;
+  if (1 - Math.min(fa, ia) / Math.max(fa, ia) > .3) return false; // לא חותכים יותר מ-30% מהתמונה: תמונה רגילה על כפולה רחבה מאבדת חצי מהגובה, ושם נחתכים ראשים
   const dpi = Math.min(m.width / ((G.W + 2*G.B) / 25.4), m.height / ((G.H + 2*G.B) / 25.4)) * Math.max(1, fa / ia); if (dpi < 170) return false;
   const F = (m.faces || []).filter(f => f.w >= .02); if (!F.length) return false;
   const s = coverRect(m.width, m.height, fa, .5, .45, 1), u = f => ((f.x * m.width - s.sx) / s.sw);
   if (F.some(f => Math.abs(u(f) - .5) < .07 + f.w * ia / fa)) return false;                  // פנים על הקיפול
   const v = f => ((f.y * m.height - s.sy) / s.sh); if (F.some(f => v(f) - f.h / 2 * (m.height / s.sh) < .03 || v(f) > .9)) return false; // פנים שנחתכות למעלה/למטה
   if (!F.some(f => f.w >= .05)) return false;
-  const sc = designScore({fam:'panorama', v:0, ids:[m.id]}); return !sc.cut && !sc.fit && !sc.bad; // בדיקה אמיתית: שום ראש לא נחתך ולא צריך להקטין
+  const sc = designScore({fam:'panorama', v:0, ids:[m.id]}); if (sc.cut || sc.fit || sc.bad) return false; // בדיקה אמיתית: שום ראש לא נחתך ולא צריך להקטין
+  return panoHeadsSafe(m, G);
+}
+/* בדיקה מחמירה על החלון האמיתי שהעימוד חותך: כל ראש – גם זיהוי חלש, גם ראש מזיהוי תנוחה – חייב להיות בפנים,
+   עם מרווח מעל הראש, מחוץ לאזור החיתוך של המעבדה, ולא על הקיפול */
+function panoHeadsSafe(m, G){
+  let L; try{ L = layoutSpread({fam:'panorama', v:0, ids:[m.id]}); }catch(_){ return false; }
+  const it = L.items.find(i => i.t === 'photo'); if (!it) return false;
+  const s = coverRect(m.width, m.height, it.w / it.h, it.fx, it.fy, it.zoom || 1);
+  const w0 = s.sx / m.width, h0 = s.sy / m.height, ww = s.sw / m.width, wh = s.sh / m.height;
+  const safe = Math.max(5, (typeof printCfg === 'function' && printCfg().safe) || 0);
+  const mY = (G.B + safe) / (G.H + 2*G.B) * wh, mX = (G.B + safe) / (G.W + 2*G.B) * ww;
+  const heads = headBoxes(m).concat((m.faces || []).filter(f => f.w >= .008 && (f.s || 1) >= .35).map(f => [f.x - f.w*.7, f.y - f.h*1.15, f.x + f.w*.7, f.y + f.h*.9]));
+  if (!heads.length) return false;
+  const cx = w0 + ww/2, band = ww * .035;
+  for (const h of heads){
+    if (h[1] < h0 + mY || h[3] > h0 + wh - mY*.6) return false;           // ראש חתוך למעלה או סנטר חתוך למטה
+    if (h[0] < w0 + mX || h[2] > w0 + ww - mX) return false;              // ראש חתוך בצדדים
+    if (h[0] < cx + band && h[2] > cx - band) return false;               // ראש על הקיפול
+  }
+  return true;
+}
+/* כפולות פנורמה שנבנו לפני הבדיקה המחמירה: אם הראשים נחתכים – התמונה חוזרת לכפולה שממנה נלקחה */
+function repickSpread(sp, i){
+  const cp = CAT_PLAN[sp.cat] || CAT_PLAN.event, fams = Object.entries(cp.fams).filter(([f]) => f !== 'panorama' && fits(f, sp.ids.length));
+  const pick = pickDesign(sp.ids, fams.length ? fams : Object.keys(FAMS).filter(f => f !== 'title' && f !== 'tpl' && f !== 'panorama' && fits(f, sp.ids.length)).map(f => [f, 1]), mulberry32((i + 1) * 7919 + sp.ids.length), i, sp.cat);
+  if (pick){ sp.fam = pick.f; sp.v = pick.v; } else fixFam(sp, i);
+}
+function fixBadPanoramas(plan){
+  if (!plan || !plan.spreads) return 0;
+  const G = geo(), sps = plan.spreads; let n = 0;
+  for (let i = sps.length - 1; i >= 0; i--){
+    const sp = sps[i]; if (sp.fam !== 'panorama' || sp.custom || !sp.ids.length) continue;
+    if (panoOK(META.get(sp.ids[0]), G)) continue;
+    if (sp.ids.length > 1){ repickSpread(sp, i); n++; continue; }
+    const ok = o => o && !o.custom && o.fam !== 'panorama' && o.fam !== 'title' && o.fam !== 'tpl';
+    let j = -1; for (let k = i - 1; k >= 0; k--) if (ok(sps[k])){ j = k; break; }
+    if (j < 0) for (let k = i + 1; k < sps.length; k++) if (ok(sps[k])){ j = k; break; }
+    if (j < 0) continue;
+    sps[j].ids = sps[j].ids.concat(sp.ids); delete sps[j].hero; repickSpread(sps[j], j);
+    sps.splice(i, 1); if (PV.cur > i) PV.cur--; n++;
+  }
+  return n;
 }
 /* עיצובים מיוחדים (רהיטים, לוח מודעות…) – לא יותר מפעם ב-6 כפולות, אחרת הם מאבדים מהקסם */
 function spaceSpecials(spreads){
@@ -7713,6 +7786,185 @@ async function instStatus(el){
     document.body.innerHTML = `<div style="padding:40px 24px;text-align:center"><h2>לא ניתן לפתוח את האחסון</h2><p style="color:#7A7066">ייתכן שהדפדפן במצב גלישה בסתר. ${e && e.message ? e.message : ''}</p></div>`;
   }
 })();
+
+/* =========================================================
+   שלב 29 – קיבוע עריכה בנגיעה בחלל המסך, הוספת כמה תמונות בבת אחת,
+   התראה על תמונה שכבר נמצאת באלבום (להעביר / להשאיר / קח אותי לשם), וסורק כפילויות
+   ========================================================= */
+/* נגיעה ברקע הכהה של העורך: מקבעת את מה שנערך (מבטלת בחירה/הזזה בתוך מסגרת) ונשארים בעורך */
+function edFix(){
+  if (!ED.open) return;
+  if (ED.sel < 0 && !ED.crop && !ED.panel) return;
+  ED.sel = -1; ED.crop = false; ED.panel = null;
+  const pn = ED.el.querySelector('.ed-panel'); if (pn) pn.innerHTML = '';
+  commit(); edTools(); edRender();
+  toast('✓ נשמר – ממשיכים לערוך', 1300);
+}
+/* איפה עוד התמונה נמצאת באלבום (חוץ מהכפולה שבעריכה) */
+function dupWhere(id){
+  const out = []; (PV.plan ? PV.plan.spreads : []).forEach((o, i) => { if (o !== ED.sp && o.ids.includes(id)) out.push(i); });
+  return out;
+}
+/* הסרת תמונה מכפולה – גם מכפולה שנערכה ידנית. כפולה אוטומטית שנשארה ריקה נמחקת */
+function removePhotoFrom(i, id){
+  const sps = PV.plan.spreads, o = sps[i]; if (!o) return;
+  if (o.custom){
+    const its = o.custom.items, k = its.findIndex(x => x.t === 'photo' && x.id === id); if (k < 0) return;
+    its.splice(k, 1);
+    if (!its.some(x => x.t === 'photo' && x.id === id)) o.custom.items = its.filter(x => !(x.t === 'el' && x.of === id && x.lk));
+    syncIds(o);
+  } else {
+    const k = o.ids.indexOf(id); if (k < 0) return;
+    o.ids.splice(k, 1);
+    if (!o.ids.length){ sps.splice(i, 1); if (PV.cur > i) PV.cur--; buildStrip(); if (ED.open && !ED.cover){ const t = ED.el.querySelector('.ed-title'); if (t) t.textContent = 'עריכת כפולה ' + (sps.indexOf(ED.sp) + 1); } savePlan(); return; }
+    fixFam(o, i);
+  }
+  savePlan(); repaintStripItem(i);
+}
+/* החלון: התמונה כבר באלבום. מחזיר {mode:'move'|'keep'|'goto'|'skip', all} */
+function askDup(id, el, here, more, isSwap){
+  return new Promise(res => {
+    const s = document.createElement('div'); s.className = 'scrim modal-scrim'; s.style.zIndex = 97;
+    const names = el.map(i => i + 1), wh = here ? 'בכפולה הזו' : names.length === 1 ? `בכפולה ${names[0]}` : `בכפולות ${names.join(', ')}`;
+    s.innerHTML = `<div class="modal"><img class="dup-th" alt=""><h3>התמונה כבר נמצאת באלבום</h3>
+      <p>התמונה הזו כבר קיימת ${wh}. מה לעשות?</p>
+      ${more > 0 ? `<label class="dup-all"><input type="checkbox"> אותה החלטה גם ל-${more} התמונות הכפולות הבאות</label>` : ''}
+      <div class="dup-acts">
+        ${el.length ? `<button class="btn" data-m="move">🔁 להחליף – להעביר לכאן<small>התמונה תופיע כאן ותיעלם מ${names.length === 1 ? 'כפולה ' + names[0] : 'הכפולות האחרות'}</small></button>` : ''}
+        <button class="btn ghost" data-m="keep">📑 להשאיר בשני המקומות<small>לא אכפת לי שהתמונה תופיע פעמיים</small></button>
+        ${el.length ? `<button class="btn ghost" data-m="goto">👁 קח אותי לשם<small>לראות איך היא ממוקמת בכפולה ${names[0]} – עם חץ חזרה לכאן</small></button>` : ''}
+        <button class="btn ghost" data-m="skip">${isSwap ? 'ביטול' : 'לא להוסיף את התמונה הזו'}</button>
+      </div></div>`;
+    thumbURL(id).then(u => { const im = s.querySelector('.dup-th'); if (u && im) im.src = u; });
+    s.addEventListener('click', e => {
+      const b = e.target.closest('[data-m]'); if (!b && e.target !== s) return;
+      const all = !!(s.querySelector('.dup-all input') || {}).checked;
+      s.remove(); res({mode:b ? b.dataset.m : 'skip', all: all && b && b.dataset.m !== 'goto'});
+    });
+    document.body.appendChild(s);
+  });
+}
+/* הוספת כמה תמונות לכפולה שבעריכה, עם בדיקת כפילויות */
+async function edAddPhotos(ids){
+  if (!ED.open || !ids || !ids.length) return;
+  const its = edItems(), plan = []; let all = null;
+  for (let n = 0; n < ids.length; n++){
+    const id = ids[n];
+    if (ED.cover){ plan.push({id, mode:'new'}); continue; }
+    const here = its.some(o => o.t === 'photo' && o.id === id), el = dupWhere(id);
+    if (!here && !el.length){ plan.push({id, mode:'new'}); continue; }
+    const left = ids.slice(n + 1).filter(x => its.some(o => o.t === 'photo' && o.id === x) || dupWhere(x).length).length;
+    let d = all && !(all.mode === 'move' && !el.length) ? all : await askDup(id, el, here, left);
+    if (d.all) all = {mode:d.mode};
+    if (d.mode === 'goto'){ edPlace(plan); edGotoSpread(el[0], ids.slice(n)); return; }
+    plan.push({id, mode:d.mode, el});
+  }
+  edPlace(plan);
+}
+function edPlace(plan){
+  const add = plan.filter(p => p.mode !== 'skip'); if (!add.length || !ED.open) return;
+  pushUndo();
+  add.filter(p => p.mode === 'move').forEach(p => p.el.slice().sort((a, b) => b - a).forEach(i => removePhotoFrom(i, p.id)));
+  const its = edItems(), G = edGeo(), T = G.T, V = edView(), m = add.length;
+  const cols = m <= 1 ? 1 : m <= 4 ? 2 : m <= 9 ? 3 : 4, rows = Math.ceil(m / cols);
+  const cw = V.vw * (m === 1 ? 1 : .86) / cols, ch = V.vh * (m === 1 ? 1 : .86) / rows;
+  const ox = V.vx + (V.vw - cw * cols) / 2, oy = V.vy + (V.vh - ch * rows) / 2;
+  add.forEach((p, k) => {
+    const ar = clamp(asp(p.id), .6, 1.7);
+    let h = m === 1 ? V.vh * .42 : ch * .88, w = h * ar; if (w > cw * .88){ w = cw * .88; h = w / ar; }
+    const c = k % cols, r = Math.floor(k / cols), x = ox + c * cw + (cw - w) / 2, y = oy + r * ch + (ch - h) / 2;
+    const ni = P(p.id, {x, y, w, h}, T, {border:Math.max(T.border, 1), shadow:.6});
+    const ff = faceFocus(META.get(p.id) || {}); if (ff){ ni.fx = ff.fx; ni.fy = ff.fy; }
+    its.push(ni);
+  });
+  ED.sel = its.length - 1; commit(); edTools(); edLoadImgs().then(edRender);
+  const mv = add.filter(p => p.mode === 'move').length;
+  toast(m === 1 ? (mv ? 'התמונה הועברה לכאן ✓' : 'התמונה נוספה ✓') : `נוספו ${m} תמונות ✓${mv ? ` (${mv} הועברו מכפולות אחרות)` : ''}`, 2200);
+}
+/* סגירת העורך בלי "חזור" כפול בהיסטוריה */
+function edCloseQuiet(){
+  return new Promise(r => {
+    if (!ED.open) return r();
+    let done = false; const fin = () => { if (done) return; done = true; removeEventListener('popstate', h); closeEditor(); r(); };
+    const h = () => setTimeout(fin, 0);
+    addEventListener('popstate', h); ELS.skipPop = 1; history.back(); setTimeout(fin, 500);
+  });
+}
+/* "קח אותי לשם": פותח את הכפולה השנייה בעורך, עם כפתור חזרה לכפולה שעבדנו עליה (ושם שואלים שוב על התמונות שנשארו) */
+async function edGotoSpread(i, pending){
+  const fromSp = ED.sp, fromNo = PV.plan.spreads.indexOf(fromSp) + 1;
+  await edCloseQuiet();
+  await showSpread(i); await openEditor();
+  edAddReturn(fromSp, fromNo, pending);
+}
+function edAddReturn(fromSp, fromNo, pending){
+  if (!ED.open) return;
+  const top = ED.el.querySelector('.ed-top'); if (!top) return;
+  const b = document.createElement('button'); b.className = 'ed-ret'; b.textContent = `↩ לכפולה ${fromNo}`; b.setAttribute('aria-label', `חזרה לעריכת כפולה ${fromNo}`);
+  top.insertBefore(b, top.querySelector('.ed-title'));
+  b.onclick = async () => {
+    const j = PV.plan.spreads.indexOf(fromSp); if (j < 0){ toast('הכפולה ההיא כבר לא קיימת'); return; }
+    await edCloseQuiet(); await showSpread(j); await openEditor();
+    if (pending && pending.length) setTimeout(() => edAddPhotos(pending), 250);
+  };
+}
+
+/* ---------- סורק כפילויות ---------- */
+function dupGroups(){
+  const map = new Map();
+  PV.plan.spreads.forEach((sp, i) => {
+    const ids = sp.custom ? sp.custom.items.filter(x => x.t === 'photo').map(x => x.id) : sp.ids;
+    ids.forEach(id => { if (!map.has(id)) map.set(id, []); map.get(id).push(i); });
+  });
+  const ok = (S.project && S.project.dupOk) || {};
+  return [...map.entries()].filter(([id, at]) => at.length > 1 && ok[id] !== at.join(',')).map(([id, at]) => ({id, at}));
+}
+function dupScan(){
+  if (!PV.plan) return;
+  const old = document.querySelector('.dsc-scrim'); if (old) old.remove();
+  const s = document.createElement('div'); s.className = 'scrim dsc-scrim'; s.style.zIndex = 90;
+  s.innerHTML = `<div class="sheet ed-pick"><div class="grab"></div><div class="pk-head"><h3>🔍 סורק כפילויות</h3></div><div class="dsc-list" style="overflow:auto;min-height:0"></div></div>`;
+  document.body.appendChild(s);
+  const box = s.querySelector('.dsc-list');
+  const draw = () => {
+    const gs = dupGroups(); box.innerHTML = '';
+    if (!gs.length){ box.innerHTML = '<div class="dsc-empty">✓ לא נמצאו תמונות שמופיעות פעמיים באלבום</div>'; return; }
+    const head = document.createElement('div'); head.className = 'dsc-empty'; head.style.padding = '4px 0 6px'; head.style.textAlign = 'right';
+    head.textContent = `נמצאו ${gs.length} ${gs.length === 1 ? 'תמונה שמופיעה' : 'תמונות שמופיעות'} יותר מפעם אחת`; box.appendChild(head);
+    gs.forEach(g => {
+      const row = document.createElement('div'); row.className = 'dsc-row';
+      const uniq = [...new Set(g.at)];
+      row.innerHTML = `<img alt=""><div class="dsc-b"><b>מופיעה ${g.at.length} פעמים</b>
+        <div class="dsc-chips">${g.at.map(i => `<button data-go="${i}">👁 כפולה ${i + 1}</button>`).join('')}</div>
+        <div class="dsc-keep">${uniq.map(i => `<button data-keep="${i}">להשאיר רק בכפולה ${i + 1}</button>`).join('')}<button class="ok" data-ok="1">להשאיר כך ✓</button></div></div>`;
+      thumbURL(g.id).then(u => { if (u) row.querySelector('img').src = u; });
+      row.addEventListener('click', async e => {
+        const go = e.target.closest('[data-go]'), keep = e.target.closest('[data-keep]'), ok = e.target.closest('[data-ok]');
+        if (go){ s.remove(); await showSpread(+go.dataset.go); pgReturnToScan(); return; }
+        if (keep){
+          const k = +keep.dataset.keep, sps = PV.plan.spreads, keepSp = sps[k];
+          // מוחקים מכל שאר המקומות (מהסוף להתחלה, כי כפולה ריקה נמחקת ומספרים זזים); בתוך הכפולה שנשארת – עותק אחד
+          sps.map((o, i) => ({o, i})).filter(x => x.o !== keepSp).reverse().forEach(({o}) => { const i = sps.indexOf(o); while (i >= 0 && (o.custom ? o.custom.items.some(x => x.t === 'photo' && x.id === g.id) : o.ids.includes(g.id))){ const before = JSON.stringify(o.ids); removePhotoFrom(i, g.id); if (sps.indexOf(o) < 0 || JSON.stringify(o.ids) === before) break; } });
+          { const i = sps.indexOf(keepSp); let guard = 0; while (i >= 0 && guard++ < 20 && (keepSp.custom ? keepSp.custom.items.filter(x => x.t === 'photo' && x.id === g.id).length : keepSp.ids.filter(x => x === g.id).length) > 1) removePhotoFrom(i, g.id); }
+          savePlan(); buildStrip(); await showSpread(Math.min(PV.cur, sps.length - 1)); toast(`✓ התמונה נשארה רק בכפולה ${sps.indexOf(keepSp) + 1}`); draw(); return;
+        }
+        if (ok){ S.project.dupOk = Object.assign({}, S.project.dupOk, {[g.id]:g.at.join(',')}); touchProject(); toast('בסדר – התמונה נשארת בשני המקומות'); draw(); }
+      });
+      box.appendChild(row);
+    });
+  };
+  draw();
+  s.addEventListener('click', e => { if (e.target === s) s.remove(); });
+}
+function pgReturnToScan(){
+  document.querySelectorAll('.pg-ret').forEach(x => x.remove());
+  const b = document.createElement('button'); b.className = 'pg-ret'; b.textContent = '↩ חזרה לסורק הכפילויות';
+  b.onclick = () => { b.remove(); dupScan(); };
+  document.body.appendChild(b);
+  const off = () => { if (!PV.active || ED.open) b.remove(); else setTimeout(off, 800); }; setTimeout(off, 800);
+  setTimeout(() => b.remove(), 60000);
+}
+$('dupScanBtn').onclick = () => dupScan();
 </script>
 </body>
 </html>
