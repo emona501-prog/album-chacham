@@ -5089,7 +5089,7 @@ async function openTeach(){
   let label = 'barmitzva', pend = [], mode = 'person'; // pend: [{url, e, sel, label}]
   const counts = () => { const c = {}; LIB.items.filter(i => (i.kind || 'person') === mode).forEach(i => c[i.label] = (c[i.label] || 0) + 1); return c; };
   const LABELS = () => mode === 'scene' ? SCENES : LIB_LABELS;
-  const draw = () => { const c = counts();
+  const draw = () => { const c = counts(), ob = s.querySelector('.cvs-body'), keep = ob ? ob.scrollTop : 0; requestAnimationFrame(() => { const nb = s.querySelector('.cvs-body'); if (nb) nb.scrollTop = keep; }); // שומר על מקום הגלילה – בלי קפיצה למעלה
     s.innerHTML = `<div class="cvs-top"><button class="ed-ic dark" data-a="x">✕</button><b>לימוד המערכת</b><span></span></div>
       <div class="cvs-body">
         <div class="seg" style="margin-bottom:10px"><button data-m="person" class="${mode === 'person' ? 'on' : ''}">בעל השמחה</button><button data-m="scene" class="${mode === 'scene' ? 'on' : ''}">סוג תמונה</button></div>
@@ -5151,7 +5151,7 @@ async function openTeach(){
     const md = e.target.closest('[data-m]');
     if (md){ if (pend.length && !(await confirmBox('יש תמונות שלא נשמרו', 'לעבור בלי לשמור?', 'לעבור', true))) return; mode = md.dataset.m; label = mode === 'scene' ? 'dance' : 'barmitzva'; pend = []; draw(); return; }
     if (l){ label = l.dataset.l; draw(); return; }
-    if (p){ pend[+p.dataset.p].sel = !pend[+p.dataset.p].sel; draw(); return; }
+    if (p){ const x = pend[+p.dataset.p]; x.sel = !x.sel; p.classList.toggle('on', x.sel); const em = p.querySelector('em'); if (x.sel && !em) p.insertAdjacentHTML('beforeend', '<em>★</em>'); if (!x.sel && em) em.remove(); return; } // סימון במקום – בלי לצייר מחדש
     if (!a) return;
     if (a.dataset.a === 'x'){ s.remove(); return; }
     if (a.dataset.a === 'add') fin.click();
