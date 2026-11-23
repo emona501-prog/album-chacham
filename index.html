@@ -1759,7 +1759,7 @@ const FAMS = {
   softCollage:{min:2, max:5,  vars:2, gen:genSoftCollage,w:2, name:'מעברים רכים'},
   hexGrid:    {min:5, max:10, vars:2, gen:genHexGrid,    w:1, name:'כוורת'},
 };
-const fits = (fk, n) => { const f = FAMS[fk]; return n >= f.min && n <= f.max && (!f.even || n % 2 === 0); };
+const fits = (fk, n) => { const f = FAMS[fk]; return n >= f.min && n <= f.max && (!f.even || n % 2 === 0) && (!f.ok || f.ok()); };
 
 function planAlbum(ids, seed){
   const rnd = mulberry32(seed), N = ids.length, spreads = [];
@@ -2021,7 +2021,13 @@ function drawTextItem(ctx, it, k, ox){
   }
   const cx = mx(it.x + it.w/2, k, ox), cy = mx(it.y + it.h/2, k, ox);
   ctx.fillStyle = it.color;
-  lines.forEach((l, i) => ctx.fillText(l, cx, cy + (i - (lines.length - 1)/2) * px * lh));
+  if (it.hatch){ // מספר מקווקו בעבודת יד: מילוי פסים אלכסוניים + קו מתאר
+    const ts = Math.max(4, Math.round(px * .045)), tc = document.createElement('canvas'); tc.width = tc.height = ts; const q = tc.getContext('2d');
+    q.fillStyle = hexA(it.color, .16); q.fillRect(0, 0, ts, ts); q.strokeStyle = hexA(it.color, .75); q.lineWidth = Math.max(1, ts * .22);
+    q.beginPath(); q.moveTo(-1, ts + 1); q.lineTo(ts + 1, -1); q.moveTo(-1, 1); q.lineTo(1, -1); q.moveTo(ts - 1, ts + 1); q.lineTo(ts + 1, ts - 1); q.stroke();
+    ctx.fillStyle = ctx.createPattern(tc, 'repeat'); ctx.strokeStyle = it.color; ctx.lineWidth = Math.max(1, px * .018); ctx.lineJoin = 'round';
+    lines.forEach((l, i) => { const yy = cy + (i - (lines.length - 1)/2) * px * lh; ctx.fillText(l, cx, yy); ctx.strokeText(l, cx, yy); });
+  } else lines.forEach((l, i) => ctx.fillText(l, cx, cy + (i - (lines.length - 1)/2) * px * lh));
   if (it.rule){ // קווים עדינים משני צדי הכיתוב
     const tw = Math.max(...lines.map(l => ctx.measureText(l).width)), gap = px * .5, end = it.w * k * .46;
     ctx.fillStyle = it.rule;
@@ -2099,6 +2105,15 @@ function drawPhotoItem(ctx, it, k, ox, img){
   ctx.translate(mx(it.x + it.w/2, k, ox), mx(it.y + it.h/2, k, ox));
   if (it.rot) ctx.rotate(it.rot * Math.PI / 180);
   const iw = w - 2*b, ih = h - 2*b - bb, cy = -bb/2; // מסגרת פולארויד: שוליים עבים למטה
+  if (it.melt && img){ // התמונה נמסה לתוך רקע מצויר (שקיפות אמיתית, לא צבע)
+    const pw = Math.max(2, Math.ceil(iw)), ph = Math.max(2, Math.ceil(ih)), t = document.createElement('canvas'); t.width = pw; t.height = ph;
+    const tx = t.getContext('2d'), s = coverRect(img.width, img.height, pw / ph, it.fx, it.fy, it.zoom);
+    tx.imageSmoothingEnabled = true; tx.imageSmoothingQuality = 'high'; tx.drawImage(img, s.sx, s.sy, s.sw, s.sh, 0, 0, pw, ph);
+    const L = Math.min(pw * .6, it.melt.len * k), left = it.melt.edge === 'left', g = tx.createLinearGradient(left ? 0 : pw, 0, left ? L : pw - L, 0);
+    g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(.45, 'rgba(0,0,0,.55)'); g.addColorStop(1, 'rgba(0,0,0,1)');
+    tx.globalCompositeOperation = 'destination-in'; tx.fillStyle = g; tx.fillRect(0, 0, pw, ph);
+    ctx.drawImage(t, -pw/2, -ph/2); t.width = t.height = 1; ctx.restore(); return;
+  }
   if (it.soft > 0 && img){ // קצוות דהויים – התמונה נמסה לתוך הרקע
     const pw = Math.max(2, Math.ceil(iw)), ph = Math.max(2, Math.ceil(ih));
     const t = document.createElement('canvas'); t.width = pw; t.height = ph;
@@ -6558,6 +6573,7 @@ function mirrorItems(items, W){
     it.x = W - it.x - it.w;
     if (it.rot) it.rot = -it.rot;
     if (it.fade && it.fade.edge) it.fade = Object.assign({}, it.fade, {edge:it.fade.edge === 'left' ? 'right' : it.fade.edge === 'right' ? 'left' : it.fade.edge});
+    if (it.melt && it.melt.edge) it.melt = Object.assign({}, it.melt, {edge:it.melt.edge === 'left' ? 'right' : 'left'});
   });
 }
 function mirrorBg(bg){
@@ -7319,6 +7335,8 @@ function headRectsOnSpread(it){
 const rOver = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
 function proOverlay(L){
   const G = L.G, ltr = typeof isLTR === 'function' && isLTR();
+  for (const it of L.items) if (it.t === 'photo' && it.melt){ const hr = headRectsOnSpread(it); if (!hr.length) continue; const left = it.melt.edge === 'left'; // גם נמס – לא על ראש
+    const room = left ? Math.min(...hr.map(r => r.x)) - it.x : it.x + it.w - Math.max(...hr.map(r => r.x + r.w)); it.melt.len = clamp(Math.min(it.melt.len, room - 3), G.W * .03, it.melt.len); }
   for (const it of L.items) if (it.t === 'photo' && it.fade && !it.grp){ // קצה דהוי לא עובר על ראש
     const hr = headRectsOnSpread(it); if (!hr.length) continue; const left = it.fade.edge === 'left';
     const room = left ? Math.min(...hr.map(r => r.x)) - it.x : it.x + it.w - Math.max(...hr.map(r => r.x + r.w));
@@ -7651,7 +7669,7 @@ function fixBadPanoramas(plan){
 }
 /* עיצובים מיוחדים (רהיטים, לוח מודעות…) – לא יותר מפעם ב-6 כפולות, אחרת הם מאבדים מהקסם */
 function spaceSpecials(spreads){
-  const RARE = ['shelf', 'cork', 'scriptName', 'monoBand', 'danceMosaic', 'clothesline', 'chalk', 'woodTable', 'kraftBook', 'galleryWall', 'portraitGallery', 'mesh'], last = {}; let lastAny = -9;
+  const RARE = ['shelf', 'cork', 'scriptName', 'monoBand', 'danceMosaic', 'clothesline', 'chalk', 'woodTable', 'kraftBook', 'galleryWall', 'portraitGallery', 'mesh', 'bigNumber', 'stoneMelt', 'waterMelt', 'vintage', 'filmHero'], last = {}; let lastAny = -9;
   spreads.forEach((sp, i) => { if (!RARE.includes(sp.fam) || sp.custom) return;
     if (i - lastAny < 4 || i - (last[sp.fam] ?? -99) < 10){
       const cp = CAT_PLAN[sp.cat] || CAT_PLAN.event, fams = Object.entries(cp.fams).filter(([f]) => !RARE.includes(f) && f !== 'panorama' && fits(f, sp.ids.length));
@@ -7826,6 +7844,106 @@ FAMS.mesh = {min:3, max:8, vars:3, gen:genMesh, w:1, name:'רשת מתכת'};
 SPECIAL_FAMS.splice(3, 0, 'mesh');
 { const add = (P0, o) => { for (const k in o) if (P0[k]) Object.assign(P0[k].fams, o[k]); };
   add(CAT_PLAN, {portrait:{mesh:1}, event:{mesh:1}}); add(SCENE_PLAN, {kids:{mesh:1}, family:{mesh:1}}); }
+
+/* =========================================================
+   שלב 30 – השראה: מספר גדול, תמונה נמסה (אבן ירושלמית / צבעי מים), אלבום וינטג׳, פילם על תמונה גדולה (גם עם שוליים)
+   ========================================================= */
+Object.assign(BOARD_BG, {stone:{el:'b:bg-stone.webp', ar:5152/2186}, water:{el:'b:bg-water.webp', ar:5152/2186}, vintage:{el:'b:bg-vintage.webp', ar:4122/1749}});
+const VFRAMES = [[530,681,[.2321,.1924,.5321,.6211],1],[521,755,[.1785,.1457,.643,.7219],'arch'],[480,607,[.1583,.1269,.6792,.7479]],[409,545,[.1907,.1486,.6112,.6991],1],
+  [569,435,[.123,.1724,.7557,.6575]],[525,717,[.1867,.1409,.6248,.7155],1],[609,463,[.133,.1814,.7323,.6436]],[465,446,[.1699,.1839,.6645,.639]],[442,690,[.19,.2116,.6176,.6333],'arch'],[600,439,[.1233,.1663,.7533,.6651]]]
+  .map(([w, h, win, sh], i) => ({el:'b:vf' + String(i + 1).padStart(2, '0') + '.webp', ar:w / h, win, shape:sh === 1 ? 'oval' : sh || undefined}));
+/* מספר גדול: 13 לבר מצווה, 12 לבת מצווה – או מספר שכתבו בכיתוב הכפולה */
+function bigNumberVal(){ const w = typeof spreadWord === 'function' ? spreadWord() : ''; const m = /^\s*(\d{1,3})\s*$/.exec(w || ''); if (m) return m[1];
+  return {barmitzva:'13', batmitzva:'12'}[S.project.event] || ''; }
+try{ document.fonts && document.fonts.load('400 40px "Suez One"', '0123456789'); }catch(_){} // ספרות לטיניות של הגופן – נטענות מראש
+function genBigNumber(ids, G, v){
+  const T = G.T, items = [], hs = v % 2 ? 'L' : 'R', os = opp(hs), num = bigNumberVal() || '1';
+  const pr = page(hs, G), r = inset(pr, G.m * .8), panW = r.w * .38;
+  const panel = hs === 'R' ? {x:r.x + r.w - panW, y:r.y, w:panW, h:r.h} : {x:r.x, y:r.y, w:panW, h:r.h};
+  ids = pickHero(ids, (r.w - panW - G.g * 2) / r.h); const hero = ids[0], rest = ids.slice(1);
+  const hr = hs === 'R' ? {x:r.x, y:r.y, w:r.w - panW - G.g * 2, h:r.h} : {x:r.x + panW + G.g * 2, y:r.y, w:r.w - panW - G.g * 2, h:r.h};
+  items.push(P(hero, hr, T, {border:0, shadow:.5, shape:'rounded'}));
+  const nh = panel.h * .62, cap = (EVENTS[S.project.event] || {}).n || '';
+  items.push({t:'text', x:panel.x, y:panel.y + panel.h * .06, w:panel.w, h:nh, text:num, font:'"Suez One"', weight:400, size:nh * .92, color:T.accent || '#B48A5A', hatch:1});
+  if (cap) items.push({t:'text', x:panel.x, y:panel.y + panel.h * .06 + nh, w:panel.w, h:panel.h * .1, text:cap, font:'"Amatic SC"', weight:700, size:panel.h * .08, color:T.ink || '#4A3A2A'});
+  const d = DRIED[(v >> 1) % DRIED.length], dh = panel.h * .26, dw = dh * .8;
+  items.push({t:'el', el:d, x:panel.x + (panel.w - dw) / 2, y:panel.y + panel.h - dh, w:dw, h:dh, rot:hs === 'R' ? -10 : 10, op:1, flip:hs !== 'R', shadow:true});
+  // הצד השני: רשת אחידה
+  const g = inset(page(os, G), G.m * .8), n = rest.length, cols = n <= 4 ? 2 : 3, rows = Math.ceil(n / cols), gap = G.g * 1.4;
+  const cw = (g.w - gap * (cols - 1)) / cols, ch = (g.h - gap * (rows - 1)) / rows;
+  rest.forEach((id, i) => { const c = i % cols, rr = Math.floor(i / cols), inRow = rr === rows - 1 ? n - rr * cols : cols, off = (cols - inRow) * (cw + gap) / 2;
+    items.push(P(id, {x:g.x + g.w - (c + 1) * cw - c * gap - off, y:g.y + rr * (ch + gap), w:cw, h:ch}, T, {border:0, shadow:.4})); });
+  return {bg:{type:'solid', color:T.bg}, items};
+}
+/* תמונה נמסה לתוך רקע מצויר: אבן ירושלמית / צבעי מים, ובצד השני הדפסות מונחות בזיגזג */
+function genMelt(kind){ return (ids, G, v) => {
+  const T = G.T, items = [], hs = v % 2 ? 'L' : 'R', W = G.W, hw = W * .6;
+  ids = pickHero(ids, hw / G.H); const hero = ids[0], rest = ids.slice(1);
+  const hx = hs === 'R' ? W - hw : -G.B;
+  items.push(P(hero, {x:hx, y:-G.B, w:hw + G.B, h:G.H + 2*G.B}, T, {border:0, shadow:0, vignette:0, melt:{edge:hs === 'R' ? 'left' : 'right', len:W * .17}}));
+  const freeW = W - hw + W * .02, fr = inset(hs === 'R' ? {x:0, y:0, w:freeW, h:G.H} : {x:W - freeW, y:0, w:freeW, h:G.H}, G.m * 1.1);
+  const title = kind === 'stone' ? (albumTitle ? albumTitle() : '') : spreadWord();
+  let top = fr.y; if (title){ const th = fr.h * .17;
+    items.push({t:'text', x:fr.x, y:fr.y, w:fr.w, h:th, text:title, font:kind === 'stone' ? '"Frank Ruhl Libre"' : '"Amatic SC"', weight:700, size:th * .62, color:kind === 'stone' ? '#5A3E22' : '#5B5470', maxLines:2});
+    top += th + G.g * 2; }
+  const k = rest.length, area = {x:fr.x, y:top, w:fr.w, h:fr.y + fr.h - top};
+  const R = RND(ids, v), maxH = Math.min(area.h * (k > 3 ? .44 : .56), area.h / (k * .58 + .42)), sz = rest.map(id => { const ar = clamp(asp(id), .75, 1.5); let w = area.w * .6, h = w / ar; if (h > maxH){ h = maxH; w = h * ar; } return [w, h]; });
+  const tot = sz.reduce((s, [, h]) => s + h, 0), stepY = k > 1 ? Math.min(sz[0][1] * .95, (area.h - sz[k - 1][1]) / (k - 1)) : 0, y0 = area.y + Math.max(0, (area.h - (stepY * (k - 1) + sz[k - 1][1])) / 2);
+  rest.forEach((id, i) => { const [w, h] = sz[i];
+    const outer = i % 2 === 0, x = (hs === 'R') === outer ? area.x + area.w * .02 : area.x + area.w * .98 - w, y = y0 + i * stepY;
+    const it = P(id, {x, y, w, h}, T, Object.assign(printOpts(G, w, h, R, 4), {shadow:1}));
+    items.push(it);
+    if (kind === 'water' && i === 0){ const dh = clamp(h * .6, 24, 80); items.push({t:'el', el:DRIED[(v * 3 + 2) % DRIED.length], x:0, y:0, w:dh * .8, h:dh, rot:0, op:1, flip:false, shadow:true, anchor:it, at:'sprig'}); }
+  });
+  return {bg:{type:'elbg', el:BOARD_BG[kind].el}, items};
+}; }
+/* אלבום וינטג׳: מסגרות נייר מעוטרות על נייר ישן */
+function genVintage(ids, G, v){
+  const T = G.T, items = [], half = Math.ceil(ids.length / 2), used = {};
+  ['R', 'L'].forEach((side, si) => {
+    const part = si ? ids.slice(half) : ids.slice(0, half); if (!part.length) return;
+    justify(part, inset(page(side, G), G.m * 1.3, G.m * 1.1), G.g * 5).forEach((c, i) => {
+      const id = part[i], car = c.w / c.h, hasF = (META.get(id) || {}).faces;
+      const fr = VFRAMES.slice().sort((a, b) => Math.abs(Math.log(a.ar * a.win[2] / a.win[3] / car)) + (used[a.el] || 0) * .3 - Math.abs(Math.log(b.ar * b.win[2] / b.win[3] / car)) - (used[b.el] || 0) * .3)[(v + i + si) % 3 === 0 && part.length > 1 ? 1 : 0];
+      used[fr.el] = (used[fr.el] || 0) + 1;
+      let fw = c.w, fh = fw / fr.ar; if (fh > c.h){ fh = c.h; fw = fh * fr.ar; }
+      const fx = c.x + (c.w - fw)/2, fy = c.y + (c.h - fh)/2, e = .008;
+      items.push(P(id, {x:fx + (fr.win[0] - e) * fw, y:fy + (fr.win[1] - e) * fh, w:(fr.win[2] + 2*e) * fw, h:(fr.win[3] + 2*e) * fh}, T, {border:0, shadow:0, vignette:.25, shape:fr.shape, cell:1}));
+      items.push({t:'el', el:fr.el, x:fx, y:fy, w:fw, h:fh, rot:0, op:1, flip:false, shadow:true, frameOf:1});
+    });
+  });
+  L_KEEPFILL = true;
+  return {bg:{type:'elbg', el:BOARD_BG.vintage.el}, items};
+}
+/* פילם ישר מעל תמונה גדולה של הכוכב; גרסה זוגית – בתוך שוליים רחבים של עץ */
+function genFilmHero(ids, G, v){
+  const T = G.T, items = [], mat = v % 2 === 1;
+  ids = pickHero(ids, G.W / G.H); const hero = ids[0], sIds = pickBest(ids.slice(1), 1.42, 99);
+  const mw = mat ? G.m * 2.2 : 0, box = mat ? {x:mw, y:mw, w:G.W - 2*mw, h:G.H - 2*mw} : {x:-G.B, y:-G.B, w:G.W + 2*G.B, h:G.H + 2*G.B};
+  items.push(P(hero, box, T, {border:0, shadow:mat ? .9 : 0, vignette:0}));
+  const k = sIds.length, pad = 2.4; let fh = G.H * .24, fw = fh * 1.42;
+  const avail = (mat ? box.w : G.W) - G.m * 2; if (k * (fw + 2*pad) > avail){ fw = avail / k - 2*pad; fh = fw / 1.42; }
+  const step = fw + 2*pad - .3;
+  sIds.forEach((id, i) => { const t = (i - (k - 1) / 2) * step, cx = G.W/2 + t, cy = G.H * .5;
+    const it = P(id, {x:cx - fw/2, y:cy - fh/2, w:fw, h:fh}, T, {border:0, shadow:0, film:true, rot:0, grp:'film', pi:i});
+    if (!i){ it.path = {diag:true, a:0, pad}; it.gc = [.22, .3, 0, -.22, -.3].map(f => ({dx:0, dy:f * (mat ? box.h : G.H)})); }
+    items.push(it); });
+  return {bg:mat ? {type:'elbg', el:BOARD_BG.wood.el} : {type:'solid', color:T.dark}, items};
+}
+Object.assign(FAMS, {
+  bigNumber:{min:5, max:10, vars:4, gen:genBigNumber, w:1, name:'מספר גדול'},
+  stoneMelt:{min:3, max:6,  vars:2, gen:genMelt('stone'), w:1, name:'אבן ירושלמית'},
+  waterMelt:{min:3, max:6,  vars:2, gen:genMelt('water'), w:1, name:'צבעי מים'},
+  vintage:  {min:3, max:8,  vars:3, gen:genVintage, w:1, name:'אלבום וינטג׳'},
+  filmHero: {min:4, max:8,  vars:2, gen:genFilmHero, w:1, name:'פילם על תמונה גדולה'},
+});
+SPECIAL_FAMS.splice(1, 0, 'bigNumber', 'stoneMelt', 'waterMelt', 'vintage', 'filmHero');
+{ const add = (P0, o) => { for (const k in o) if (P0[k]) Object.assign(P0[k].fams, o[k]); };
+  add(CAT_PLAN, {portrait:{waterMelt:1, vintage:1, bigNumber:1}, group:{vintage:1}, event:{filmHero:1}});
+  add(SCENE_PLAN, {tefillin:{stoneMelt:2}, torah:{stoneMelt:2}, family:{vintage:1}, kids:{waterMelt:1}}); }
+/* בחירה לפי סוג האירוע: מספר גדול רק כשיש מספר, אבן ירושלמית לבר מצווה, צבעי מים לבנות ולתינוקות */
+{ const fitsEv = { bigNumber:() => !!bigNumberVal(), stoneMelt:() => ['barmitzva', 'wedding', 'family', 'general'].includes(S.project.event), waterMelt:() => ['batmitzva', 'newborn', 'birthday', 'family'].includes(S.project.event) };
+  for (const f in fitsEv) FAMS[f].ok = fitsEv[f]; }
 
 /* =========================================================
    הפעלה
