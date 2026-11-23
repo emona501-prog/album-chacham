@@ -1507,7 +1507,7 @@ function justify(ids, r, g){
    ========================================================= */
 function genHeroGrid(ids, G, v){
   const T = G.T, hs = v % 2 ? 'L' : 'R', os = opp(hs), st = Math.floor(v / 2) % 3;
-  ids = pickBest(ids, G.pw / G.H); const hero = ids[0], rest = ids.slice(1);
+  ids = pickHero(ids, G.pw / G.H); const hero = ids[0], rest = ids.slice(1);
   const items = [], gridR = inset(page(os, G), G.m); let bg;
   if (st === 0){
     bg = {type:'solid', color:T.bg};
@@ -1528,7 +1528,7 @@ function genHeroGrid(ids, G, v){
 
 function genCenterHero(ids, G, v){
   const T = G.T, st = v % 3;
-  ids = pickBest(ids, (G.W * .42) / G.H); const hero = ids[0], rest = ids.slice(1);
+  ids = pickHero(ids, (G.W * .42) / G.H); const hero = ids[0], rest = ids.slice(1);
   const hw = G.W * .42, hx = (G.W - hw) / 2, items = []; let bg;
   if (st === 0){ bg = {type:'solid', color:T.bg}; items.push(P(hero, {x:hx, y:-G.B, w:hw, h:G.H + 2*G.B}, T, {border:0, shadow:.5})); }
   else if (st === 1){ bg = {type:'radial', c1:T.dark2, c2:T.dark}; items.push(P(hero, {x:hx, y:G.m, w:hw, h:G.H - 2*G.m}, T, {border:Math.max(T.border, .8), shadow:.8})); }
@@ -1554,7 +1554,7 @@ function genTwoBig(ids, G, v){
 
 function genCardHero(ids, G, v){
   const T = G.T, hs = v % 2 ? 'L' : 'R', os = opp(hs);
-  ids = pickBest(ids, G.pw / G.H); const hero = ids[0], rest = ids.slice(1);
+  ids = pickHero(ids, G.pw / G.H); const hero = ids[0], rest = ids.slice(1);
   const items = [P(hero, bleedPage(hs, G), T, {border:0, shadow:0})];
   const card = inset(page(os, G), G.m * .9);
   items.push({t:'rect', ...card, fill:T.card, stroke:hexA(T.accent, .55), sw:.35, shadow:.3});
@@ -1568,7 +1568,7 @@ function genCardHero(ids, G, v){
 
 function genFan(ids, G, v){
   const T = G.T, hs = v % 2 ? 'L' : 'R', os = opp(hs), st = Math.floor(v / 2) % 2;
-  ids = pickBest(ids, G.pw / G.H); const hero = ids[0];
+  ids = pickHero(ids, G.pw / G.H); const hero = ids[0];
   let rest = ids.slice(1).sort((a, b) => asp(a) - asp(b)); // לאורך – למניפה
   const bottomN = rest.length >= 5 ? 2 : 0;
   const fanIds = rest.slice(0, rest.length - bottomN), botIds = rest.slice(rest.length - bottomN);
@@ -1595,7 +1595,7 @@ function genFan(ids, G, v){
 
 function genScattered(ids, G, v){
   const T = G.T, hs = v % 2 ? 'L' : 'R', os = opp(hs);
-  ids = pickBest(ids, G.pw / G.H); const hero = ids[0];
+  ids = pickHero(ids, G.pw / G.H); const hero = ids[0];
   let rest = ids.slice(1);
   const prints = pickBest(rest, 1.45, 2).slice(0, 2); rest = rest.filter(i => !prints.includes(i));
   const items = [P(hero, bleedPage(hs, G), T, {border:0, shadow:0})];
@@ -1672,7 +1672,7 @@ function genSequence(ids, G, v){
 
 function genTitle(ids, G, v){
   const T = G.T, hs = 'L', os = opp(hs), st = v % 2; // הכותרת תמיד בעמוד הראשון (ימין בעברית; באנגלית העימוד כולו מתהפך)
-  ids = pickBest(ids, G.pw / G.H); const hero = ids[0], extra = ids.slice(1, 3);
+  ids = pickHero(ids, G.pw / G.H); const hero = ids[0], extra = ids.slice(1, 3);
   const items = []; let bg;
   if (st === 0){
     bg = {type:'solid', color:T.bg};
@@ -2166,7 +2166,7 @@ function genShapeHero(ids, G, v){
   const T = G.T, hs = v % 2 ? 'L' : 'R', os = opp(hs);
   const list = STYLE_SHAPES[S.project.styleId] || STYLE_SHAPES.classic, shape = list[Math.floor(v / 2) % list.length];
   const box = shapeBox(shape, G.pw * .82, G.H - 2.4*G.m);
-  ids = pickBest(ids, box.w / box.h); const hero = ids[0], rest = ids.slice(1);
+  ids = pickHero(ids, box.w / box.h); const hero = ids[0], rest = ids.slice(1);
   const pg = page(hs, G), cx = pg.x + pg.w/2, cy = G.H/2;
   const items = [];
   const off = Math.max(2.5, G.m * .35);
@@ -2179,7 +2179,7 @@ function genShapeHero(ids, G, v){
 /* מעברים רכים: תמונות שנמסות לרקע בלי מסגרות – מראה חלומי */
 function genSoftCollage(ids, G, v){
   const T = G.T, hs = v % 2 ? 'L' : 'R', os = opp(hs);
-  ids = pickBest(ids, G.pw / G.H); const hero = ids[0], rest = ids.slice(1);
+  ids = pickHero(ids, G.pw / G.H); const hero = ids[0], rest = ids.slice(1);
   const items = [];
   const soft = Math.max(8, G.pw * .07);
   const hp = page(hs, G);
@@ -3068,12 +3068,35 @@ function shapeSafe(it, m, ff){
   return [[U(x0), V(y0 - pad)], [U(x1), V(y0 - pad)], [U(x0), V(y1)], [U(x1), V(y1)]].every(([u, v]) => shapeFits(shape, u, v));
 }
 /* ציון איכות לעיצוב: חיתוך חזק מדי או פנים חתוכות = עיצוב פסול */
+/* כלל מקצועי: תמונה שממלאת את הרקע / חצי כפולה – רק הכוכב לבד, או הכוכב עם המשפחה הקרובה (האנשים שסומנו כמודגשים).
+   בלי כוכב מוגדר – רק תמונה של עד 3 אנשים */
+/* בוחרים תמונה ראשית: הכי מתאימה בצורה – אבל קודם כל מהתמונות של הכוכב/המשפחה */
+function pickHero(ids, ar){ const o = pickBest(ids, ar), h = o.find(id => heroOK(META.get(id)) && Math.abs(Math.log(asp(id) / ar)) < 1); return h ? [h].concat(o.filter(x => x !== h)) : o; }
+function heroOK(m){
+  if (!m) return false; const all = (m.faces || []).filter(f => f.w >= .02); if (!all.length) return false;
+  const mw = Math.max(...all.map(f => f.w)), F = all.filter(f => f.w >= mw * .45);
+  if (!(S.project && (S.project.stars || []).length)) return F.length <= 3;
+  if (!F.some(f => f.st)) return false;
+  const others = F.filter(f => !f.st && !f.fm && !f.fo);
+  return !others.length || F.length <= 3;
+}
+function heroCheck(L){
+  const G = L.G || geo(), ph = L.items.filter(i => i.t === 'photo' && !i.bgTile && !i.cell), area = i => Math.max(0, Math.min(i.x + i.w, G.W) - Math.max(i.x, 0)) * Math.max(0, Math.min(i.y + i.h, G.H) - Math.max(i.y, 0));
+  const nF = i => { const m = META.get(i.id); const a = ((m && m.faces) || []).filter(f => f.w >= .02); if (!a.length) return 0; const mw = Math.max(...a.map(f => f.w)); return a.filter(f => f.w >= mw * .45).length; };
+  let bad = 0;
+  for (const it of ph){ const A = area(it);
+    if ((A >= G.W * G.H * .4 || A >= G.pw * G.H * .85) && !heroOK(META.get(it.id))) bad++;       // רקע מלא שאינו הכוכב/המשפחה
+    if (nF(it) >= 4 && ph.some(o => o !== it && nF(o) < nF(it) && area(o) > A * 2.5)) bad++;     // תמונה קבוצתית בקטן ליד תמונה גדולה של פחות אנשים
+  }
+  return bad;
+}
 function designScore(sp){ const L = layoutSpread(sp); const nP = L.items.filter(i => i.t === 'photo').length, G = L.G || geo();
   const cov = L.items.filter(i => i.t === 'photo').reduce((a, i) => a + Math.max(0, Math.min(i.x + i.w, G.W) - Math.max(i.x, 0)) * Math.max(0, Math.min(i.y + i.h, G.H) - Math.max(i.y, 0)), 0) / (G.W * G.H);
-  return {sparse:nP >= 2 && cov < .3, cov, loss:(L.loss || 0) + (L.fit || 0) * .05, cut:L.cut || 0, fit:L.fit || 0, bad:(L.loss || 0) > .5 || (L.cut || 0) > 0 || (L.fit || 0) > Math.max(1, nP * .34)}; }
+  const hb = heroCheck(L);
+  return {sparse:nP >= 2 && cov < .3, cov, hero:hb, loss:(L.loss || 0) + (L.fit || 0) * .05 + hb * .4, cut:L.cut || 0, fit:L.fit || 0, bad:hb > 0 || (L.loss || 0) > .5 || (L.cut || 0) > 0 || (L.fit || 0) > Math.max(1, nP * .34)}; }
 function pickDesign(ids, fams, rnd, idx, cat){
   const opts = [];
-  for (const [f, w] of fams){ if (!fits(f, ids.length)) continue;
+  for (const [f, w] of fams){ if (!fits(f, ids.length) || (f === 'panorama' && ids.length > 1)) continue;
     for (let v = 0; v < FAMS[f].vars; v++){ const sc = designScore({fam:f, v, ids, cat}); opts.push({f, v, w, sc}); } }
   if (!opts.length) return null;
   let good = opts.filter(o => !o.sc.bad);
@@ -4808,10 +4831,10 @@ function suggestStars(){
 /* הדגשת אנשים: לכל תמונה p.fw = רמת ההדגשה הגבוהה של מי שמופיע בה (1 מודגש, 2 מודגש מאוד), מוחלש אם הפנים קטנטנות */
 function markFocus(){
   const fo = ((S.project && S.project.focus) || []).map(f => ({d:dq8(f.k), l:f.l}));
-  S.photos.forEach(p => { p.fw = 0;
+  S.photos.forEach(p => { p.fw = 0; (p.faces || []).forEach(f => { delete f.fm; });
     if (!fo.length) return;
     (p.faces || []).forEach(f => { if (!f.d) return; const d = dq8(f.d);
-      for (const x of fo) if (dist(x.d, d) < .5){ const nF = (p.faces || []).length; p.fw = Math.max(p.fw, x.l * (f.w < .03 ? .4 : nF > 6 ? .6 : 1)); } }); });
+      for (const x of fo) if (dist(x.d, d) < .5){ f.fm = 1; /* אדם מודגש – בד"כ המשפחה הקרובה */ const nF = (p.faces || []).length; p.fw = Math.max(p.fw, x.l * (f.w < .03 ? .4 : nF > 6 ? .6 : 1)); } }); });
   S.photos.forEach(p => (p.faces || []).forEach(f => { if (f.fo) p.fw = Math.max(p.fw || 0, f.fo); })); // סימון ידני בלחיצה ארוכה
 }
 /* מסמן את פני הכוכב בכל תמונה: m.star = כמה פעמים, m.starW = גודל הפנים */
@@ -7327,7 +7350,7 @@ function proOverlay(L){
 function genHeroBleed(ids, G, v){
   const T = G.T, hs = v % 2 ? 'L' : 'R', dark = (v >> 1) % 2 === 0, fanStyle = v >= 4;
   const W = G.W, hw = W * .64;
-  ids = pickBest(ids, hw / G.H); const hero = ids[0]; let rest = ids.slice(1);
+  ids = pickHero(ids, hw / G.H); const hero = ids[0]; let rest = ids.slice(1);
   const bgc = dark ? T.dark : T.bg, items = [];
   const hx = hs === 'R' ? W - hw : -G.B;
   items.push(P(hero, {x:hx, y:-G.B, w:hw + G.B, h:G.H + 2*G.B}, T, {border:0, shadow:0, vignette:0, fade:{edge:hs === 'R' ? 'left' : 'right', len:W * .13, color:bgc}}));
@@ -7379,7 +7402,7 @@ function genDanceMosaic(ids, G, v){
 function genScriptName(ids, G, v){
   const T = G.T, items = [], hs = v % 2 ? 'L' : 'R', os = opp(hs);
   const name = String(S.project.name || '').trim().split(/\s+/).filter(w => !/^(חוגג|חוגגת|בר|בת|מצווה|מצוה|לבר|לבת|חתונת|של)$/.test(w)).slice(0, 2).join(' ') || spreadWord();
-  ids = pickBest(ids, (G.pw * .5) / G.H); const hero = ids[0], rest = ids.slice(1);
+  ids = pickHero(ids, (G.pw * .5) / G.H); const hero = ids[0], rest = ids.slice(1);
   const nTop = Math.ceil(rest.length / 2), top = rest.slice(0, nTop), bot = rest.slice(nTop);
   const r = inset(page(hs, G), G.m * .6), bandH = r.h * .3, rowH = (r.h - bandH - G.g * 2) / 2;
   const rowFill = (part, rr) => { const a = part.map(id => clamp(asp(id), .7, 1.6)), sa = a.reduce((x, y) => x + y, 0), ww = rr.w - G.g * (part.length - 1); let x = rr.x + rr.w;
@@ -7393,7 +7416,7 @@ function genScriptName(ids, G, v){
 /* ---------- 6. פילם מתעקל / אלכסוני מעל תמונה גדולה ---------- */
 function genFilmCurve(ids, G, v){
   const T = G.T, items = [], diag = v % 2;
-  ids = pickBest(ids, G.W / G.H); const hero = ids[0], strip = ids.slice(1);
+  ids = pickHero(ids, G.W / G.H); const hero = ids[0], strip = ids.slice(1);
   const hero2 = strip.length >= 5 ? pickBest(strip, G.pw / G.H)[0] : null; const sIds = pickBest(strip.filter(i => i !== hero2), 1.42, 99);
   if (hero2){ items.push(P(hero, bleedPage('R', G), T, {border:0, shadow:0})); items.push(P(hero2, bleedPage('L', G), T, {border:0, shadow:0})); }
   else items.push(P(hero, {x:-G.B, y:-G.B, w:G.W + 2*G.B, h:G.H + 2*G.B}, T, {border:0, shadow:0}));
@@ -7415,7 +7438,7 @@ function genFilmCurve(ids, G, v){
 /* ---------- 7. פורטרט גבוה + גלריה בפס כהה עם הילה זהובה ---------- */
 function genPortraitGallery(ids, G, v){
   const T = G.T, items = [], hs = v % 2 ? 'L' : 'R', os = opp(hs);
-  ids = pickBest(ids, G.pw * .62 / G.H); const hero = ids[0], rest = ids.slice(1);
+  ids = pickHero(ids, G.pw * .62 / G.H); const hero = ids[0], rest = ids.slice(1);
   const pr = page(hs, G), heroW = Math.min(pr.w * .78, G.H * .8 * 1.1);
   const hx = hs === 'R' ? G.W - G.m * .6 - heroW : G.m * .6;
   items.push(P(hero, {x:hx, y:G.m * .6, w:heroW, h:G.H - G.m * 1.2}, T, frameOpts('silver', G, .5)));
@@ -7550,7 +7573,7 @@ Object.assign(FAMS, {cork:{min:4, max:10, vars:4, gen:genCork, w:1, name:'לוח
    ========================================================= */
 /* תמונה על כל הכפולה (פנורמה). עם 2–3 תמונות: תמונות קטנות מונחות עליה – רק במקום שאין בו ראשים */
 function genPanorama(ids, G, v){
-  const T = G.T, items = []; ids = pickBest(ids, G.W / G.H); const hero = ids[0], rest = ids.slice(1);
+  const T = G.T, items = []; ids = pickHero(ids, G.W / G.H); const hero = ids[0], rest = ids.slice(1);
   items.push(P(hero, {x:-G.B, y:-G.B, w:G.W + 2*G.B, h:G.H + 2*G.B}, T, {border:0, shadow:0, vignette:0}));
   const pw = Math.min(G.pw * .36, G.H * .5);
   rest.forEach((id, i) => { const ar = clamp(asp(id), .75, 1.5), w = pw, h = w / ar, side = i % 2 ? 'L' : 'R', pr = page(side, G);
@@ -7563,7 +7586,7 @@ FAMS.panorama = {min:1, max:3, vars:1, gen:genPanorama, w:0, name:'תמונה ע
 
 /* האם תמונה מתאימה לכפולה שלמה: רחבה, חדה מספיק ברוחב הכפולה, ואין פנים על הקיפול */
 function panoOK(m, G){
-  if (!m || !m.width || isBlink(m)) return false;
+  if (!m || !m.width || isBlink(m) || !heroOK(m)) return false;
   const fa = G.W / G.H, ia = m.width / m.height; if (ia < 1.25) return false;
   if (1 - Math.min(fa, ia) / Math.max(fa, ia) > .3) return false; // לא חותכים יותר מ-30% מהתמונה: תמונה רגילה על כפולה רחבה מאבדת חצי מהגובה, ושם נחתכים ראשים
   const dpi = Math.min(m.width / ((G.W + 2*G.B) / 25.4), m.height / ((G.H + 2*G.B) / 25.4)) * Math.max(1, fa / ia); if (dpi < 170) return false;
@@ -7618,7 +7641,7 @@ function fixBadPanoramas(plan){
 }
 /* עיצובים מיוחדים (רהיטים, לוח מודעות…) – לא יותר מפעם ב-6 כפולות, אחרת הם מאבדים מהקסם */
 function spaceSpecials(spreads){
-  const RARE = ['shelf', 'cork', 'scriptName', 'monoBand', 'danceMosaic'], last = {}; let lastAny = -9;
+  const RARE = ['shelf', 'cork', 'scriptName', 'monoBand', 'danceMosaic', 'clothesline', 'chalk', 'woodTable', 'kraftBook', 'galleryWall', 'portraitGallery'], last = {}; let lastAny = -9;
   spreads.forEach((sp, i) => { if (!RARE.includes(sp.fam) || sp.custom) return;
     if (i - lastAny < 4 || i - (last[sp.fam] ?? -99) < 10){
       const cp = CAT_PLAN[sp.cat] || CAT_PLAN.event, fams = Object.entries(cp.fams).filter(([f]) => !RARE.includes(f) && f !== 'panorama' && fits(f, sp.ids.length));
