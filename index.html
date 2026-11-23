@@ -7651,7 +7651,7 @@ function fixBadPanoramas(plan){
 }
 /* עיצובים מיוחדים (רהיטים, לוח מודעות…) – לא יותר מפעם ב-6 כפולות, אחרת הם מאבדים מהקסם */
 function spaceSpecials(spreads){
-  const RARE = ['shelf', 'cork', 'scriptName', 'monoBand', 'danceMosaic', 'clothesline', 'chalk', 'woodTable', 'kraftBook', 'galleryWall', 'portraitGallery'], last = {}; let lastAny = -9;
+  const RARE = ['shelf', 'cork', 'scriptName', 'monoBand', 'danceMosaic', 'clothesline', 'chalk', 'woodTable', 'kraftBook', 'galleryWall', 'portraitGallery', 'mesh'], last = {}; let lastAny = -9;
   spreads.forEach((sp, i) => { if (!RARE.includes(sp.fam) || sp.custom) return;
     if (i - lastAny < 4 || i - (last[sp.fam] ?? -99) < 10){
       const cp = CAT_PLAN[sp.cat] || CAT_PLAN.event, fams = Object.entries(cp.fams).filter(([f]) => !RARE.includes(f) && f !== 'panorama' && fits(f, sp.ids.length));
@@ -7784,6 +7784,47 @@ SPECIAL_FAMS.splice(2, 0, 'clothesline', 'galleryWall', 'woodTable', 'kraftBook'
   add(SCENE_PLAN, {family:{galleryWall:2}, tables:{woodTable:1}, kids:{chalk:2, clothesline:1}}); }
 Object.assign(EL_CATS, {dried:'פרחים מיובשים'});
 Object.keys(EV_CATS).forEach(k => { if (!EV_CATS[k].includes('dried')) EV_CATS[k].push('dried'); });
+
+/* =========================================================
+   שלב 29 – רשת מתכת: תמונות תלויות בקליפסים על רשת שחורה מעל קיר
+   ========================================================= */
+BOARD_BG.mesh = {el:'b:bg-mesh.webp', ar:6000/2546};
+const MESH = {W:6000, H:2546, panels:[[200, 2770], [3230, 5800]], y0:190, y1:2356, rows:8};
+const MESH_CLIPS = ['c01', 'c02', 'c03'].map(c => 'b:' + c + '.webp');
+function genMesh(ids, G, v){
+  const T = G.T, items = [], R = RND(ids, v), B = bgRect(G, BOARD_BG.mesh.ar), half = Math.ceil(ids.length / 2);
+  const sx = px => B.x + px / MESH.W * B.w, sy = py => B.y + py / MESH.H * B.h;
+  const wires = []; for (let j = 0; j <= MESH.rows; j++) wires.push(sy(MESH.y0 + j * (MESH.y1 - MESH.y0) / MESH.rows));
+  const clipEl = MESH_CLIPS[v % MESH_CLIPS.length];
+  ['R', 'L'].forEach((side, si) => {
+    const part = si ? ids.slice(half) : ids.slice(0, half); if (!part.length) return;
+    const pr = page(side, G), pc = pr.x + pr.w / 2;
+    const pn = MESH.panels.map(([a, b]) => ({x0:sx(a), x1:sx(b)})).sort((p, q) => Math.abs((p.x0 + p.x1)/2 - pc) - Math.abs((q.x0 + q.x1)/2 - pc))[0];
+    const top = wires.find(y => y - (wires[1] - wires[0]) * .3 > G.m + G.B * 0) ?? wires[1], bot = Math.min(wires[wires.length - 1], G.H - G.m);
+    const ix0 = Math.max(pn.x0, pr.x + G.m) , ix1 = Math.min(pn.x1, pr.x + pr.w - G.m), pad = (ix1 - ix0) * .05;
+    const r = {x:ix0 + pad, y:top + (wires[1] - wires[0]) * .35, w:ix1 - ix0 - 2*pad, h:bot - top - (wires[1] - wires[0]) * .55};
+    justify(part, r, G.g * 5).forEach((c, i) => {
+      const s = .9; let w = c.w * s, h = c.h * s; const x = c.x + (c.w - w)/2;
+      const want = c.y + (c.h - h)/2; let wy = top; for (const y of wires) if (y >= top) if (y <= want + h * .08) wy = y; // נתלה על החוט שמעליו
+      const ty = wy + Math.max(1.2, h * .012); if (ty + h > bot){ h = bot - ty; w = h * (c.w / c.h); }
+      const ph = P(part[i], {x:x + (c.w * s - w)/2, y:ty, w, h}, T, Object.assign(printOpts(G, w, h, R, .8), {hangTop:ty}));
+      items.push(ph);
+      const cw = clamp(Math.min(w, h) * .13, 7, 20), chh = cw * 520 / 360;
+      (w / h > 1.15 ? [.24, .76] : [.5]).forEach(fx => items.push({t:'el', el:clipEl, x:0, y:0, w:cw, h:chh, rot:0, op:1, flip:false, shadow:true, anchor:ph, at:'clip', fx}));
+    });
+  });
+  return {bg:{type:'elbg', el:BOARD_BG.mesh.el}, items};
+}
+{ const ca = corkAnchors; corkAnchors = function(L){ // קליפס: אוחז בקצה העליון של התמונה, נע ומסתובב איתה
+    for (const it of L.items) if (it.hangTop != null && it.t === 'photo'){ it.y = it.hangTop; delete it.hangTop; }
+    for (const it of L.items){ const p = it.anchor; if (!p || it.at !== 'clip') continue; delete it.anchor;
+      const th = (p.rot || 0) * Math.PI / 180, c = Math.cos(th), s = Math.sin(th), cx = p.x + p.w/2, cy = p.y + p.h/2, lx = ((it.fx ?? .5) - .5) * p.w, ly = -p.h/2;
+      const ax = cx + lx * c - ly * s, ay = cy + lx * s + ly * c; it.x = ax - it.w/2; it.y = ay - it.h * .74; it.rot = p.rot || 0; delete it.fx; }
+    return ca(L); }; }
+FAMS.mesh = {min:3, max:8, vars:3, gen:genMesh, w:1, name:'רשת מתכת'};
+SPECIAL_FAMS.splice(3, 0, 'mesh');
+{ const add = (P0, o) => { for (const k in o) if (P0[k]) Object.assign(P0[k].fams, o[k]); };
+  add(CAT_PLAN, {portrait:{mesh:1}, event:{mesh:1}}); add(SCENE_PLAN, {kids:{mesh:1}, family:{mesh:1}}); }
 
 /* =========================================================
    הפעלה
