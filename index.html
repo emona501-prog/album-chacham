@@ -7734,9 +7734,10 @@ function genBoard(kind){ return (ids, G, v) => {
     let r = inset(page(side, G), G.m * 1.4, G.m * 1.2);
     if (word && si === 0){ const th = Math.min(r.h * .2, 34);
       if (kind === 'chalk') items.push({t:'text', x:r.x, y:r.y, w:r.w, h:th, text:word, font:'"Amatic SC"', weight:700, size:th * .8, color:'rgba(245,245,240,.92)'});
-      else { const nw = Math.min(r.w * .5, 100), nh = th * 1.15, nx = r.x + (r.w - nw) / 2;
-        items.push({t:'el', el:'b:s03.webp', x:nx, y:r.y, w:nw, h:nh, rot:-2, op:1, flip:false, shadow:true});
-        items.push({t:'text', x:nx + nw*.08, y:r.y + nh*.15, w:nw*.84, h:nh*.7, text:word, font:'"Amatic SC"', weight:700, size:nh*.5, color:'#3A2A1C', rot:-2});
+      else { const tg = [['tg10', 1.8256, .1, .84], ['tg13', 2.1257, .2, .6], ['tg09', 1.7291, .1, .84], ['tg07', 2.1081, .2, .6]][(v >> 1) % 4]; // פתק קרוע / סרט נייר
+        const nh = th * 1.15, nw = Math.min(r.w * .6, nh * tg[1]), nx = r.x + (r.w - nw) / 2;
+        items.push({t:'el', el:'b:' + tg[0] + '.webp', x:nx, y:r.y, w:nw, h:nh, rot:-2, op:1, flip:false, shadow:true});
+        items.push({t:'text', x:nx + nw*tg[2], y:r.y + nh*.15, w:nw*tg[3], h:nh*.7, text:word, font:'"Amatic SC"', weight:700, size:nh*.5, color:'#3A2A1C', rot:-2});
         items.push({t:'el', el:'b:k24.webp', x:nx + nw*.72, y:r.y - nh*.25, w:nh*.9, h:nh*.9*.66, rot:8, op:1, flip:false, shadow:true}); }
       r = {x:r.x, y:r.y + th + G.g * 2, w:r.w, h:r.h - th - G.g * 2}; }
     justify(part, r, G.g * 3).forEach((c, i) => {
