@@ -397,6 +397,9 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
 .ev-chips button.on{border-color:var(--accent);background:#FFF5EC;font-weight:700}
 .star-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .fo-grid{max-height:44vh;overflow:auto;padding:2px}
+.sp-mng{display:flex;gap:8px;justify-content:center;margin:2px 0 10px}
+.sp-mng button{flex:1;max-width:190px;padding:9px 10px;border-radius:14px;background:#fff;border:1.5px solid #E6DED2;font:inherit;font-size:14.5px;font-weight:600;color:var(--ink,#1a1410)}
+.sp-mng #spDelQ{color:var(--danger,#B3261E)}
 .col-sec{grid-column:1/-1;margin:8px 2px 0;font-size:14px}
 .exv{flex-direction:column;justify-content:flex-start;align-items:stretch;background:#141110;padding:12px;overflow:auto;color:#fff}
 .exv-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;position:sticky;top:0;z-index:2;background:#141110;padding:4px 0}
@@ -607,6 +610,7 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
     <button class="icon-btn" id="spNext" aria-label="הכפולה הבאה"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 18l-6-6 6-6"/></svg></button>
     <button class="icon-btn sm" id="spLast" aria-label="לסוף האלבום"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M17 18l-6-6 6-6M10 18l-6-6 6-6"/></svg></button>
   </div>
+  <div class="sp-mng"><button id="spAddQ">＋ הוספת כפולה</button><button id="spDelQ">🗑 מחיקת כפולה</button></div>
   <div class="acts-row">
     <button class="pill accent" id="altBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z"/></svg>עיצוב אחר</button>
     <button class="pill" id="edBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>עריכה</button>
@@ -6204,7 +6208,13 @@ function captionCustom(sp){
 $('spFirst').onclick = () => showSpread(0);
 $('spLast').onclick = () => showSpread(PV.plan.spreads.length - 1);
 document.querySelector('.snav .mid').onclick = jumpDialog;
-$('addSpBtn').onclick = addSpreadDialog; $('styBtn').onclick = styleDialog; $('clrBtn').onclick = clearDialog;
+$('addSpBtn').onclick = addSpreadDialog; $('spAddQ').onclick = addSpreadDialog;
+$('spDelQ').onclick = async () => { // מחיקת הכפולה הנוכחית – בלחיצה אחת ואישור
+  if (!PV.plan || PV.plan.spreads.length <= 1){ toast('אי אפשר למחוק את הכפולה היחידה'); return; }
+  if (PV.cur === 0 && PV.plan.spreads[0].fam === 'title' && !(await confirmBox('זו כפולת הפתיחה', 'בדרך כלל משאירים אותה. למחוק בכל זאת?', 'למחוק', true))) return;
+  const n = PV.plan.spreads[PV.cur].ids.length;
+  if (!(await confirmBox(`למחוק את כפולה ${PV.cur + 1}?`, n ? `${n} התמונות שלה יישארו באלבום כ"לא בשימוש" – אפשר להחזיר אותן אחר כך.` : 'הכפולה ריקה.', 'מחיקה', true))) return;
+  PV.plan.spreads.splice(PV.cur, 1); await afterPlanChange(Math.min(PV.cur, PV.plan.spreads.length - 1)); toast('הכפולה נמחקה'); }; $('styBtn').onclick = styleDialog; $('clrBtn').onclick = clearDialog;
 if (/netlify\.app$/.test(location.hostname)) document.body.classList.add('has-badge'); // מקום לתווית של נטליפיי, שלא תסתיר כפתורים
 
 /* =========================================================
