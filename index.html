@@ -618,7 +618,7 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
     <button class="pill" id="fsBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
   </div>
   <div class="sub-row">
-    <button id="colBtn">🧩 קולאז׳ים</button><button id="bookBtn">📖 תצוגת ספר</button><button id="shareBtn">📤 שיתוף</button><button id="morePhBtn">➕ עוד תמונות</button><button id="addSpBtn">＋ כפולה</button><button id="styBtn">סגנון לכפולה</button><button id="clrBtn">ניקוי</button><button id="dupScanBtn">🔍 סורק כפילויות</button><button data-help="page">💡 הסברים</button>
+    <button id="colBtn">🧩 קולאז׳ים</button><button id="bookBtn">📖 תצוגת ספר</button><button id="shareBtn">📤 שיתוף</button><button id="morePhBtn">➕ עוד תמונות</button><button id="addSpBtn">＋ כפולה</button><button id="lightBtn">☀ אור</button><button id="styBtn">סגנון לכפולה</button><button id="clrBtn">ניקוי</button><button id="dupScanBtn">🔍 סורק כפילויות</button><button data-help="page">💡 הסברים</button>
   </div>
   <div class="strip" id="strip"></div>
   <div class="ctrl">
@@ -1814,7 +1814,7 @@ function spreadWord(){ if (CUR_SP && typeof CUR_SP.word === 'string') return CUR
   return W[0]; }
 function layoutSpread(sp){
   const prev = STYLE_OVR; STYLE_OVR = (sp && sp.kind !== 'cover' && sp.styleId) || null;
-  try{ return layoutSpread0(sp); } finally{ STYLE_OVR = prev; }
+  try{ const L = layoutSpread0(sp); if (sp && sp.light) L.bg = Object.assign({}, L.bg, {light:sp.light === 'none' ? null : sp.light}); return L; } finally{ STYLE_OVR = prev; }
 }
 /* כלל עיצוב: כמה שיותר אנשים בתמונה (והפנים קטנות יותר) – המשבצת צריכה להיות גדולה יותר.
    מסדר מחדש את התמונות בין המשבצות של הכפולה: הגדולה ביותר לתמונה הקבוצתית, בלי לפגוע מדי בהתאמת הצורה */
@@ -2027,6 +2027,12 @@ function drawTextItem(ctx, it, k, ox){
     q.beginPath(); q.moveTo(-1, ts + 1); q.lineTo(ts + 1, -1); q.moveTo(-1, 1); q.lineTo(1, -1); q.moveTo(ts - 1, ts + 1); q.lineTo(ts + 1, ts - 1); q.stroke();
     ctx.fillStyle = ctx.createPattern(tc, 'repeat'); ctx.strokeStyle = it.color; ctx.lineWidth = Math.max(1, px * .018); ctx.lineJoin = 'round';
     lines.forEach((l, i) => { const yy = cy + (i - (lines.length - 1)/2) * px * lh; ctx.fillText(l, cx, yy); ctx.strokeText(l, cx, yy); });
+  } else if (it.carve){ // חקוק בקיר: אור מלמטה, צל מלמעלה, מילוי כהה שקוף
+    const o = Math.max(1, px * .03), base = it.color;
+    lines.forEach((l, i) => { const yy = cy + (i - (lines.length - 1)/2) * px * lh;
+      ctx.fillStyle = 'rgba(255,250,240,.75)'; ctx.fillText(l, cx, yy + o);
+      ctx.fillStyle = 'rgba(30,18,8,.55)'; ctx.fillText(l, cx, yy - o * .6);
+      ctx.fillStyle = hexA(base, .85); ctx.fillText(l, cx, yy); });
   } else lines.forEach((l, i) => ctx.fillText(l, cx, cy + (i - (lines.length - 1)/2) * px * lh));
   if (it.rule){ // קווים עדינים משני צדי הכיתוב
     const tw = Math.max(...lines.map(l => ctx.measureText(l).width)), gap = px * .5, end = it.w * k * .46;
@@ -2294,7 +2300,7 @@ async function paint(cv, sp, cssW, opt = {}){
   const off = document.createElement('canvas'); off.width = Math.round(mmW * k); off.height = Math.round(mmH * k);
   const ctx = off.getContext('2d');
   drawBg(ctx, L, k, ox, bgImg);
-  L.items.forEach((it, i) => drawItem(ctx, it, k, ox, imgs[i]));
+  L.items.forEach((it, i) => drawItem(ctx, it, k, ox, imgs[i])); drawLightFx(ctx, L, k, ox);
   if (opt.coverGuides) drawCoverGuides(ctx, G, x => (x + ox) * k, y => (y + ox) * k, k, dpr);
   if (opt.fold && !G.cover){ // הצללת קו הקיפול – במסך בלבד, לא מודפסת
     const fx = (G.pw + ox) * k, fw = Math.max(6, G.pw * .05 * k);
@@ -2593,6 +2599,7 @@ async function renderPrintInner(sp, step){
     each(ctx => drawItem(ctx, it, k, ox, img));
     if (img) img.close();
   }
+  each(ctx => drawLightFx(ctx, L, k, ox));
   await nextFrame();
   const strips = [];
   for (const b of bands){ strips.push({y:b.y0, h:b.h, jpeg:await new Promise((res, rej) => b.c.toBlob(x => x ? res(x) : rej(new Error('encode')), 'image/jpeg', .95))}); b.c.width = b.c.height = 1; }
@@ -2744,7 +2751,8 @@ function pixelStats(bmp){
   const sd = sx.getImageData(0, 0, 4, 4).data, sig = [];
   for (let i = 0; i < 16; i++) sig.push(sd[i*4], sd[i*4+1], sd[i*4+2]);
   c.width = c.height = hc.width = hc.height = sc4.width = sc4.height = 1;
-  return {sharp:Math.round(sharp), hash:[h1, h2], sig, skin};
+  let wr = 0; for (let i = 0; i < w*h; i += 3) wr += d[i*4] - d[i*4+2]; // חום הצבעים: אדום מול כחול
+  return {sharp:Math.round(sharp), hash:[h1, h2], sig, skin, warm:Math.round(wr / Math.ceil(w*h/3) / 255 * 1000) / 1000};
 }
 const popcnt = x => { x -= (x >>> 1) & 0x55555555; x = (x & 0x33333333) + ((x >>> 2) & 0x33333333); return ((x + (x >>> 4) & 0xF0F0F0F) * 0x1010101) >>> 24; };
 const hashDist = (a, b) => popcnt((a[0] ^ b[0]) >>> 0) + popcnt((a[1] ^ b[1]) >>> 0);
@@ -3361,7 +3369,7 @@ function edRender(){
   const ctx = off.getContext('2d');
   const im = id => { const e = ED.imgs.get(id); return e ? e.bmp : null; };
   drawBg(ctx, L, k, 0, L.bg.type === 'blur' ? im(L.bg.id) : L.bg.type === 'img' ? (L.bg.uid ? UBG.bmp.get(L.bg.uid) : im(L.bg.id)) : null);
-  L.items.forEach(it => { try{ drawItem(ctx, it, k, 0, it.t === 'photo' ? im(it.id) : it.t === 'el' ? ELS.bmp.get(it.el) : null); }catch(_){} });
+  L.items.forEach(it => { try{ drawItem(ctx, it, k, 0, it.t === 'photo' ? im(it.id) : it.t === 'el' ? ELS.bmp.get(it.el) : null); }catch(_){} }); try{ drawLightFx(ctx, L, k, 0); }catch(_){}
   const cv = ED.cv, cw = Math.round(cssW * dpr), ch = Math.round(cssH * dpr);
   if (cv.width !== cw || cv.height !== ch){ cv.width = cw; cv.height = ch; }
   cv.style.width = cssW + 'px'; cv.style.height = cssH + 'px';
@@ -5256,6 +5264,15 @@ function getEl(id){
   ELS.pend.set(id, p); return p;
 }
 function drawElItem(ctx, it, k, ox, img){
+  if (it.el === 'v:recess'){ const x = mx(it.x, k, ox), y = mx(it.y, k, ox), w = it.w * k, h = it.h * k; // צל פנימי: התמונה שקועה בקיר
+    ctx.save(); ctx.translate(x + w/2, y + h/2); shapePath(ctx, it.shape || 'rect', w, h); ctx.clip();
+    shapePath(ctx, it.shape || 'rect', w, h); ctx.rect(w*1.5, -h*1.5, -w*3, h*3);
+    const m = Math.min(w, h); ctx.fillStyle = 'rgba(0,0,0,1)';
+    ctx.shadowColor = 'rgba(20,12,4,.8)'; ctx.shadowBlur = m * .05; ctx.shadowOffsetY = m * .04; ctx.shadowOffsetX = m * .018; ctx.fill('evenodd'); // צל עמוק מהשפה העליונה
+    ctx.shadowColor = 'rgba(20,12,4,.45)'; ctx.shadowBlur = m * .14; ctx.shadowOffsetY = m * .02; ctx.shadowOffsetX = 0; ctx.fill('evenodd'); // צל רך מסביב
+    ctx.restore(); ctx.save(); ctx.translate(x + w/2, y + h/2); // שפת הקיר: אור על הקצה התחתון, קו כהה דק למעלה
+    ctx.lineWidth = Math.max(1, m * .008); ctx.strokeStyle = 'rgba(255,250,238,.7)'; ctx.translate(0, ctx.lineWidth * .7); shapePath(ctx, it.shape || 'rect', w + ctx.lineWidth, h + ctx.lineWidth); ctx.stroke();
+    ctx.restore(); return; }
   if (String(it.el).startsWith('v:')){ const x = mx(it.x, k, ox), y = mx(it.y, k, ox), w = it.w * k, h = it.h * k;
     ctx.save(); ctx.globalAlpha = it.op == null ? 1 : it.op; if (it.flip){ ctx.translate(2*x + w, 0); ctx.scale(-1, 1); }
     drawVorn(ctx, it, x, y, w, h, img); ctx.restore(); return; }
@@ -5266,7 +5283,9 @@ function drawElItem(ctx, it, k, ox, img){
   if (it.shadow){ ctx.shadowColor = 'rgba(0,0,0,.28)'; ctx.shadowBlur = 2.2 * k; ctx.shadowOffsetY = .8 * k; }
   else if (RT.bgLum < .38){ const e = elInfo(it.el); if (e && e.lum != null && e.lum < .4){ ctx.shadowColor = 'rgba(255,236,200,.5)'; ctx.shadowBlur = Math.max(2, Math.min(it.w, it.h) * .05) * k; } } // אלמנט כהה על רקע כהה – הילה עדינה בהירה שמפרידה אותו
   ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-  if (it.flip){ ctx.translate(x + w, y); ctx.scale(-1, 1); ctx.drawImage(img, 0, 0, w, h); }
+  if (it.tile){ const pat = ctx.createPattern(img, 'repeat'); pat.setTransform(new DOMMatrix().translate(x, y).scale(it.tile * k / img.width)); ctx.fillStyle = pat; ctx.fillRect(x, y, w, h); }
+  else if (it.cover){ const s = coverRect(img.width, img.height, w / h, .5, .5, 1); ctx.drawImage(img, s.sx, s.sy, s.sw, s.sh, x, y, w, h); }
+  else if (it.flip){ ctx.translate(x + w, y); ctx.scale(-1, 1); ctx.drawImage(img, 0, 0, w, h); }
   else ctx.drawImage(img, x, y, w, h);
   ctx.restore();
 }
@@ -5677,7 +5696,8 @@ function fixTextContrast(items, bg, T){
     const light = isLightHex(it.color);
     if (dark && !light) it.color = T.inkOnDark; else if (!dark && light) it.color = T.ink; });
 }
-function texElIds(bg){ if (bg && bg.type === 'elbg') return [bg.el, bg.frame].filter(Boolean); return bg && bg.type === 'tex' && bg.tex === 'botanical' ? BOTANICAL.map(f => 'b:' + f) : []; }
+function texElIds(bg){ const lf = bg && bg.light && typeof LIGHT_FX !== 'undefined' && LIGHT_FX[bg.light] ? [LIGHT_FX[bg.light].el] : []; return texElIds0(bg).concat(lf); }
+function texElIds0(bg){ if (bg && bg.type === 'elbg') return [bg.el, bg.frame].filter(Boolean); return bg && bg.type === 'tex' && bg.tex === 'botanical' ? BOTANICAL.map(f => 'b:' + f) : []; }
 
 /* ---------- תמונה כרקע ---------- */
 function drawBgImage(ctx, img, L, k, ox, bg){
@@ -6223,6 +6243,9 @@ function captionCustom(sp){
 $('spFirst').onclick = () => showSpread(0);
 $('spLast').onclick = () => showSpread(PV.plan.spreads.length - 1);
 document.querySelector('.snav .mid').onclick = jumpDialog;
+$('lightBtn').onclick = async () => { // אור חלון / צל עלים / בלי – לכל כפולה
+  const sp = PV.plan && PV.plan.spreads[PV.cur]; if (!sp) return; const seq = ['window', 'leaves', 'none'], cur = sp.light || (layoutSpread(sp).bg || {}).light || 'none';
+  sp.light = seq[(seq.indexOf(cur) + 1) % seq.length]; await afterPlanChange(PV.cur); toast({window:'☀ אור חלון', leaves:'🌿 צל עלים', none:'בלי אפקט אור'}[sp.light]); };
 $('addSpBtn').onclick = addSpreadDialog; $('spAddQ').onclick = addSpreadDialog;
 $('spDelQ').onclick = async () => { // מחיקת הכפולה הנוכחית – בלחיצה אחת ואישור
   if (!PV.plan || PV.plan.spreads.length <= 1){ toast('אי אפשר למחוק את הכפולה היחידה'); return; }
@@ -7580,7 +7603,8 @@ function corkAnchors(L){
 function drawElBg(ctx, L, k, ox, bg){
   const G = L.G, img = ELS.bmp.get(bg.el), R0 = {x:(-G.B + ox) * k, y:(-G.B + ox) * k, w:(G.W + 2*G.B) * k, h:(G.H + 2*G.B) * k};
   ctx.fillStyle = '#B9875A'; ctx.fillRect(R0.x, R0.y, R0.w, R0.h);
-  if (img && img.width){ const s = coverRect(img.width, img.height, R0.w / R0.h, .5, .5, 1); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(img, s.sx, s.sy, s.sw, s.sh, R0.x, R0.y, R0.w, R0.h); }
+  if (img && img.width && bg.tile){ const pat = ctx.createPattern(img, 'repeat'), sc = bg.tile * k / img.width; pat.setTransform(new DOMMatrix().translate(R0.x, R0.y).scale(sc)); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; ctx.fillStyle = pat; ctx.fillRect(R0.x, R0.y, R0.w, R0.h); }
+  else if (img && img.width){ const s = coverRect(img.width, img.height, R0.w / R0.h, .5, .5, 1); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high'; ctx.drawImage(img, s.sx, s.sy, s.sw, s.sh, R0.x, R0.y, R0.w, R0.h); }
   const fi = bg.frame && ELS.bmp.get(bg.frame);
   if (fi && fi.width){ // מסגרת עץ ב-9 חלקים: הפינות לא נמתחות
     const S = bg.fst, t = (bg.fmm + G.B) * k, X = R0.x, Y = R0.y, W = R0.w, H = R0.h, iw = fi.width, ih = fi.height;
@@ -7669,7 +7693,7 @@ function fixBadPanoramas(plan){
 }
 /* עיצובים מיוחדים (רהיטים, לוח מודעות…) – לא יותר מפעם ב-6 כפולות, אחרת הם מאבדים מהקסם */
 function spaceSpecials(spreads){
-  const RARE = ['shelf', 'cork', 'scriptName', 'monoBand', 'danceMosaic', 'clothesline', 'chalk', 'woodTable', 'kraftBook', 'galleryWall', 'portraitGallery', 'mesh', 'bigNumber', 'stoneMelt', 'waterMelt', 'vintage', 'filmHero'], last = {}; let lastAny = -9;
+  const RARE = ['shelf', 'cork', 'scriptName', 'monoBand', 'danceMosaic', 'clothesline', 'chalk', 'woodTable', 'kraftBook', 'galleryWall', 'portraitGallery', 'mesh', 'bigNumber', 'stoneMelt', 'waterMelt', 'vintage', 'filmHero', 'homeWall', 'niche', 'wallMelt', 'band', 'wallInset'], last = {}; let lastAny = -9;
   spreads.forEach((sp, i) => { if (!RARE.includes(sp.fam) || sp.custom) return;
     if (i - lastAny < 4 || i - (last[sp.fam] ?? -99) < 10){
       const cp = CAT_PLAN[sp.cat] || CAT_PLAN.event, fams = Object.entries(cp.fams).filter(([f]) => !RARE.includes(f) && f !== 'panorama' && fits(f, sp.ids.length));
@@ -7944,6 +7968,126 @@ SPECIAL_FAMS.splice(1, 0, 'bigNumber', 'stoneMelt', 'waterMelt', 'vintage', 'fil
 /* בחירה לפי סוג האירוע: מספר גדול רק כשיש מספר, אבן ירושלמית לבר מצווה, צבעי מים לבנות ולתינוקות */
 { const fitsEv = { bigNumber:() => !!bigNumberVal(), stoneMelt:() => ['barmitzva', 'wedding', 'family', 'general'].includes(S.project.event), waterMelt:() => ['batmitzva', 'newborn', 'birthday', 'family'].includes(S.project.event) };
   for (const f in fitsEv) FAMS[f].ok = fitsEv[f]; }
+
+/* =========================================================
+   שלב 31 – חיפויי קיר: קיר הבית, נישה מקושתת, תמונה נמסה לקיר, פס חיפוי, תמונות שקועות בקיר
+   + אור חלון / צל עלים, כיתוב חקוק, התאמת גוון הקיר לתמונות
+   ========================================================= */
+FRAME3D.black = {n:'שחור', base:'#202022', light:'#55555a', dark:'#050505', line:'#000000'};
+FRAME3D.white = {n:'לבן', base:'#F3F1EC', light:'#FFFFFF', dark:'#C9C4BA', line:'#9E988C'};
+/* tone: חם/ניטרלי/קר · tile: רוחב אריח במ"מ (חיפוי שחוזר בלי תפרים) · lit: כבר יש בתמונה קרן אור */
+const WALLS = [
+  {id:'plaster', el:'b:wt-plaster.webp', tile:150, tone:'warm', n:'טיח חם'},
+  {id:'beige',   el:'b:wt-beige.webp',   tile:210, tone:'warm', n:'טיח מחוספס'},
+  {id:'lime',    el:'b:wt-lime.webp',    tile:230, tone:'warm', n:'אבן גיר'},
+  {id:'stone',   el:'b:wt-stone.webp',   tile:320, tone:'neutral', n:'אבן לבנה'},
+  {id:'gray',    el:'b:wt-gray.webp',    tile:300, tone:'cool', n:'בטון'},
+  {id:'wood',    el:'b:wt-wood.webp',    tile:330, tone:'warm', dark:1, n:'עץ ממוחזר'},
+  {id:'warm',    el:'b:ww-warm.webp',    tone:'warm', lit:1, n:'טיח באור חלון'},
+  {id:'white',   el:'b:ww-white.webp',   tone:'neutral', lit:1, n:'טיח לבן באור'},
+  {id:'brown',   el:'b:ww-brown.webp',   tone:'warm', lit:1, dark:1, n:'קיר חום'},
+  {id:'cracked', el:'b:ww-cracked.webp', tone:'warm', lit:1, n:'טיח סדוק'},
+  {id:'sand',    el:'b:ww-sand.webp',    tone:'neutral', lit:1, n:'גלי חול'},
+  {id:'stain',   el:'b:ww-stain.webp',   tone:'cool', lit:1, n:'בטון אומנותי'},
+  {id:'sandst',  el:'b:ww-sandstone.webp', tone:'warm', lit:1, n:'אבן חול'},
+  {id:'fluted',  el:'b:ww-fluted.webp',  tone:'neutral', lit:1, n:'חיפוי פסים'},
+];
+const BANDS = [{el:'b:wt-ginkgo.webp', tile:170}, {el:'b:ww-fluted.webp'}, {el:'b:wt-stone.webp', tile:200}, {el:'b:wt-lime.webp', tile:160}, {el:'b:wt-wood.webp', tile:240}];
+/* התאמת גוון: חם מול קר לפי הצבעים של התמונות בכפולה */
+function photosTone(ids){ const w = ids.map(id => (META.get(id) || {}).warm).filter(x => x != null); if (!w.length) return null;
+  const a = w.reduce((s, x) => s + x, 0) / w.length; return a > .07 ? 'warm' : a < .015 ? 'cool' : 'neutral'; }
+function pickWall(ids, v, filt){
+  const tone = photosTone(ids), ev = S.project.event;
+  let pool = WALLS.filter(w => !filt || filt(w));
+  const pref = tone || (['barmitzva', 'wedding'].includes(ev) ? 'neutral' : 'warm');
+  const good = pool.filter(w => w.tone === pref || w.tone === 'neutral' || (pref === 'neutral' && w.tone !== 'cool'));
+  if (good.length >= 3) pool = good;
+  return pool[(v + (ids[0] ? String(ids[0]).length * 7 + ids.length : 0)) % pool.length];
+}
+const wallBg = (w, v) => ({type:'elbg', el:w.el, tile:w.tile || 0, light:w.lit ? null : (v % 3 === 2 ? 'leaves' : 'window')});
+const PRINT_FRAMES = ['black', 'wood', 'white', 'gold'];
+/* א. קיר הבית: תמונות ממוסגרות תלויות על קיר אמיתי, באור של חלון */
+function genHomeWall(ids, G, v){
+  const T = G.T, items = [], wall = pickWall(ids, v), half = Math.ceil(ids.length / 2), fr = PRINT_FRAMES[(v >> 1) % PRINT_FRAMES.length];
+  ['R', 'L'].forEach((side, si) => {
+    const part = ids.length === 2 ? [ids[si]] : si ? ids.slice(half) : ids.slice(0, half); if (!part.length) return;
+    const r = inset(page(side, G), G.m * (part.length === 1 ? 2.6 : 1.8), G.m * (part.length === 1 ? 2.2 : 1.5));
+    justify(part, r, G.g * 7).forEach((c, i) => { const s = .9, w = c.w * s, h = c.h * s;
+      items.push(P(part[i], {x:c.x + (c.w - w)/2, y:c.y + (c.h - h)/2, w, h}, T, Object.assign(frameOpts(fr, G, 1.15), {shadow:1, vignette:0}))); });
+  });
+  return {bg:wallBg(wall, v), items};
+}
+/* ב. נישה מקושתת בקיר עם תמונת הכוכב, ושם חקוק בקיר; בצד השני תמונות ממוסגרות */
+function genNiche(ids, G, v){
+  const T = G.T, items = [], hs = v % 2 ? 'L' : 'R', os = opp(hs), wall = pickWall(ids, v + 1, w => !w.dark);
+  const pr = inset(page(hs, G), G.m * 1.6), title = albumTitle ? albumTitle() : '', th = title ? pr.h * .13 : 0;
+  const nh = pr.h - th - (title ? G.g * 3 : 0), nw = Math.min(pr.w * .78, nh * .68);
+  ids = pickHero(ids, nw / nh); const hero = ids[0], rest = ids.slice(1);
+  const tall = asp(hero) < .95, ar0 = clamp(asp(hero), 1, 1.6); let aw = tall ? nw : pr.w * .86, ah = tall ? nh : aw / ar0; if (ah > nh){ ah = nh; aw = ah * ar0; }
+  const nx = pr.x + (pr.w - aw) / 2, ny = pr.y + (nh - ah) / 2, shp = tall ? 'arch' : 'rect'; // קשת רק לתמונה לאורך – אחרת נישה ישרה
+  const ph = P(hero, {x:nx, y:ny, w:aw, h:ah}, T, {border:0, shadow:0, vignette:0, shape:tall ? 'arch' : undefined});
+  items.push(ph, {t:'el', el:'v:recess', x:ph.x, y:ph.y, w:ph.w, h:ph.h, rot:0, op:1, flip:false, shape:shp, of:ph.id, lk:1, anchor:ph, at:'recess'});
+  if (title) items.push({t:'text', x:pr.x, y:pr.y + pr.h - th, w:pr.w, h:th, text:title, font:'"Frank Ruhl Libre"', weight:700, size:th * .62, color:'#6E6253', carve:1, maxLines:1});
+  if (rest.length){ const r = inset(page(os, G), G.m * 1.8, G.m * 1.5), fr = PRINT_FRAMES[(v >> 1) % PRINT_FRAMES.length];
+    justify(rest, r, G.g * 7).forEach((c, i) => { const s = .9, w = c.w * s, h = c.h * s;
+      items.push(P(rest[i], {x:c.x + (c.w - w)/2, y:c.y + (c.h - h)/2, w, h}, T, Object.assign(frameOpts(fr, G, 1.1), {shadow:1, vignette:0}))); }); }
+  return {bg:wallBg(wall, v), items};
+}
+/* ג. תמונה נמסה לתוך קיר (כמו האבן הירושלמית – עם כל חיפוי) */
+function genWallMelt(ids, G, v){
+  const wall = pickWall(ids, v + 2, w => !w.dark), L = genMelt('stone')(ids, G, v);
+  L.bg = wallBg(wall, v); L.bg.light = null;
+  L.items.forEach(it => { if (it.t === 'text'){ it.color = '#5A4A3A'; it.carve = 1; } });
+  return L;
+}
+/* ד. פס חיפוי: רקע נקי, ורצועה של חיפוי בצד החיצוני של הכפולה */
+function genBand(ids, G, v){
+  const T = G.T, items = [], b = BANDS[v % BANDS.length], half = Math.ceil(ids.length / 2), bw = G.pw * .26;
+  ['R', 'L'].forEach((side, si) => {
+    const part = si ? ids.slice(half) : ids.slice(0, half); if (!part.length) return;
+    const pg = page(side, G), outerRight = side === 'R', withBand = si === (v >> 1) % 2 || ids.length > 6;
+    let r = inset(pg, G.m * 1.2);
+    if (withBand){ const bx = outerRight ? pg.x + pg.w - bw : pg.x;
+      items.push({t:'el', el:b.el, x:outerRight ? bx : bx - G.B, y:-G.B, w:bw + G.B, h:G.H + 2*G.B, rot:0, op:1, flip:false, tile:b.tile || 0, cover:!b.tile, bgTile:1});
+      r = outerRight ? {x:r.x, y:r.y, w:r.w - bw * .72, h:r.h} : {x:r.x + bw * .72, y:r.y, w:r.w - bw * .72, h:r.h}; }
+    justify(part, r, G.g * 2.4).forEach((c, i) => items.push(P(part[i], c, T, {border:0, shadow:.9, vignette:0})));
+  });
+  return {bg:{type:'solid', color:T.bg === '#FFFFFF' ? '#FAF8F4' : T.bg}, items};
+}
+/* ה. תמונות שקועות בקיר: חלונות חתוכים בחיפוי עם צל פנימי */
+function genWallInset(ids, G, v){
+  const T = G.T, items = [], wall = pickWall(ids, v + 3, w => !w.dark), half = Math.ceil(ids.length / 2);
+  ['R', 'L'].forEach((side, si) => {
+    const part = si ? ids.slice(half) : ids.slice(0, half); if (!part.length) return;
+    justify(part, inset(page(side, G), G.m * 1.5), G.g * 6).forEach((c, i) => { const s = .92, w = c.w * s, h = c.h * s, x = c.x + (c.w - w)/2, y = c.y + (c.h - h)/2;
+      const shape = (v % 3 === 1 && h > w * 1.1 && asp(part[i]) < .9) ? 'arch' : undefined, ph = P(part[i], {x, y, w, h}, T, {border:0, shadow:0, vignette:0, shape});
+      items.push(ph, {t:'el', el:'v:recess', x:ph.x, y:ph.y, w:ph.w, h:ph.h, rot:0, op:1, flip:false, shape:shape || 'rect', of:ph.id, lk:1, anchor:ph, at:'recess'}); });
+  });
+  return {bg:wallBg(wall, v), items};
+}
+Object.assign(FAMS, {
+  homeWall: {min:2, max:6, vars:6, gen:genHomeWall, w:1, name:'קיר הבית'},
+  niche:    {min:2, max:5, vars:4, gen:genNiche, w:1, name:'נישה בקיר'},
+  wallMelt: {min:3, max:6, vars:4, gen:genWallMelt, w:1, name:'תמונה נמסה לקיר'},
+  band:     {min:3, max:8, vars:10, gen:genBand, w:1, name:'פס חיפוי'},
+  wallInset:{min:2, max:6, vars:6, gen:genWallInset, w:1, name:'תמונות שקועות בקיר'},
+});
+SPECIAL_FAMS.splice(1, 0, 'homeWall', 'niche', 'wallMelt', 'wallInset', 'band');
+{ const add = (P0, o) => { for (const k in o) if (P0[k]) Object.assign(P0[k].fams, o[k]); };
+  add(CAT_PLAN, {portrait:{niche:1, homeWall:1, wallMelt:1}, group:{homeWall:1, band:1}, event:{band:1, wallInset:1}, detail:{wallInset:1}});
+  add(SCENE_PLAN, {family:{homeWall:2}, kids:{wallInset:1}}); }
+{ const ca = corkAnchors; corkAnchors = function(L){ // הצל הפנימי של הנישה צמוד לתמונה – גם אחרי ששמירת הראשים שינתה את גודלה
+    for (const it of L.items){ const p = it.anchor; if (!p || it.at !== 'recess') continue; delete it.anchor; delete it.at; Object.assign(it, {x:p.x, y:p.y, w:p.w, h:p.h, rot:p.rot || 0, shape:p.shape === 'arch' ? 'arch' : 'rect'}); }
+    return ca(L); }; }
+/* אור חלון / צל עלים – שכבה עדינה מעל כל הכפולה (גם מעל התמונות) */
+const LIGHT_FX = {window:{el:'b:fx-window.webp', op:.85}, leaves:{el:'b:fx-leaves.webp', op:.9}};
+function drawLightFx(ctx, L, k, ox){
+  const f = L.bg && L.bg.light && LIGHT_FX[L.bg.light]; if (!f) return; const img = ELS.bmp.get(f.el); if (!img || !img.width) return;
+  const G = L.G, flip = L.bg.lightFlip; ctx.save(); ctx.globalAlpha = f.op; ctx.globalCompositeOperation = 'multiply'; ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+  const x = (-G.B + ox) * k, y = (-G.B + ox) * k, w = (G.W + 2*G.B) * k, h = (G.H + 2*G.B) * k;
+  if (flip){ ctx.translate(x + w, y); ctx.scale(-1, 1); ctx.drawImage(img, 0, 0, w, h); } else ctx.drawImage(img, x, y, w, h);
+  ctx.restore();
+}
 
 /* =========================================================
    הפעלה
