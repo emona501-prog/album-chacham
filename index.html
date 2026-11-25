@@ -626,6 +626,7 @@ body.editing .toasts{bottom:auto;top:calc(110px + env(safe-area-inset-top))}
     <div class="ctrl-row"><span>סוג האירוע<br><small style="color:var(--muted)" id="evSum"></small></span><button class="mini" id="evBtn">שינוי</button></div>
     <div class="ctrl-row"><span>בעל השמחה<br><small style="color:var(--muted)" id="starSum"></small></span><button class="mini" id="starBtn">מי הכוכב?</button></div>
     <div class="ctrl-row"><span>הדגשת אנשים ⭐<br><small style="color:var(--muted)" id="focusSum">מי שתבחרו יקבל תמונות גדולות ובולטות יותר</small></span><button class="mini" id="focusBtn">בחירה</button></div>
+    <div class="ctrl-row"><span>הפרדה גברים / נשים<br><small style="color:var(--muted)" id="sepSum">באירוע דתי – לא באותה כפולה</small></span><button class="switch" id="sepSw"></button></div>
     <div class="ctrl-row"><span>כותרות פרק<br><small style="color:var(--muted)" id="scSum">"הריקודים", "החופה"… לפי סוג התמונות</small></span><button class="switch" id="scSw"></button></div>
     <div class="ctrl-row"><span>עיטורים אוטומטיים<br><small style="color:var(--muted)">עיטור וסמל האירוע בפתיחה ובכריכה</small></span><button class="switch" id="decoSw"></button></div>
     <div class="ctrl-row"><span>עיטור מקצועי אוטומטי ✨<br><small style="color:var(--muted)">מסגרות זהב ועיטורי פינה סביב תמונות – רק איפה שיש מקום, חדים בדפוס</small></span><button class="switch" id="elsSw"></button></div>
@@ -2352,7 +2353,7 @@ async function openPage(){
     } else if (!PPL.clusters) clusterPeople();
     updStarRow(); }
   if (!PV.active) return;
-  const inAlbum = albumPhotos(), ids = inAlbum.map(p => p.id).sort(), sig = albumSig(ids) + ':a' + inAlbum.filter(p => p.an).length + ':s' + (typeof sceneCount === 'function' ? sceneCount() : 0) + (S.project.sceneTitles ? 't' : '');
+  const inAlbum = albumPhotos(), ids = inAlbum.map(p => p.id).sort(), sig = albumSig(ids) + ':x' + (S.project.sep || '') + ':a' + inAlbum.filter(p => p.an).length + ':s' + (typeof sceneCount === 'function' ? sceneCount() : 0) + (S.project.sceneTitles ? 't' : '');
   let plan = await DB.get('pages', S.project.id + '_album').catch(() => null);
   if (!plan || plan.sig !== sig || forceRe){
     const seed = plan ? plan.seed : (Date.now() & 0xffff);
@@ -3002,7 +3003,7 @@ function planAlbumSmart(ps, seed){
   const peakSet = new Set(hs.slice(0, Math.max(0, Math.floor(rest.length / 14))).map(([p]) => p.id));
   const isPeak = p => peakSet.has(p.id);
   const recent = [];
-  for (const s of sessionize(rest)){
+  for (const s of (typeof sepSessions === 'function' ? sepSessions(sessionize(rest)) : sessionize(rest))){
     const cp = (s.scene && SCENE_PLAN[s.scene]) || CAT_PLAN[s.cat] || CAT_PLAN.event, n = s.items.length;
     let firstOfRun = true;
     let k = Math.max(1, Math.round(n / cp.target));
@@ -3032,7 +3033,9 @@ function planAlbumSmart(ps, seed){
     }
   }
   // כפולה עם תמונה בודדת (לא אמור לקרות) מתמזגת
-  for (let i = spreads.length - 1; i > 0; i--) if (spreads[i].ids.length < 2 && i > 0){ spreads[i-1].ids.push(...spreads[i].ids); fixFam(spreads[i-1], i - 1); spreads.splice(i, 1); }
+  for (let i = spreads.length - 1; i > 0; i--) if (spreads[i].ids.length < 2 && i > 0){ // מתמזגת לשכנה שלא יוצרת ערבוב גברים/נשים
+    const j = typeof sexClash === 'function' && sepOn() && sexClash(spreads[i-1].ids.concat(spreads[i].ids)) && spreads[i+1] && !sexClash(spreads[i+1].ids.concat(spreads[i].ids)) ? i + 1 : i - 1;
+    spreads[j].ids.push(...spreads[i].ids); fixFam(spreads[j], j); spreads.splice(i, 1); }
   return spreads;
 }
 
@@ -5884,6 +5887,7 @@ async function pickUserBg(cb){
 
 function updDesignRow(){
   if ($('scSw')){ $('scSw').classList.toggle('on', !!S.project.sceneTitles); const n = sceneCount(); $('scSum').textContent = n ? `זוהו סוגים ב-${n} תמונות` : 'עובד אחרי לימוד "סוג תמונה" במסך הלימוד'; }
+  if ($('sepSw') && typeof sepOn === 'function'){ const on = sepOn(), o = S.project.sep; $('sepSw').classList.toggle('on', on); $('sepSum').textContent = o ? (on ? 'מופעל – גברים ונשים בכפולות נפרדות' : 'כבוי') : (on ? 'אוטומטי: זוהה אירוע דתי' : 'אוטומטי: לא זוהתה הפרדה'); }
   if ($('decoSw')) $('decoSw').classList.toggle('on', S.project.autoDeco !== false);
   if ($('elsSw')) $('elsSw').classList.toggle('on', !!S.project.autoEls);
   const g = S.project.bgAll; if ($('bgAllRow')){ $('bgAllRow').classList.toggle('hidden', !g); if (g) $('bgAllSum').textContent = g.type === 'tex' ? TEXTURES[g.tex] + ' · ' + (PALETTES[g.pal] || PALETTES.theme).n : 'תמונה'; }
@@ -5985,6 +5989,8 @@ async function sceneQuickDialog(){
     libSave().catch(() => {}); }
   return true;
 }
+$('sepSw').onclick = () => { S.project.sep = sepOn() ? 'off' : 'on'; touchProject(); updDesignRow();
+  if (PV.plan){ PV.plan.spreads = replanKeepCustom(PV.plan.spreads, PV.plan.seed); savePlan(); buildStrip(); showSpread(PV.cur = 0); } toast(S.project.sep === 'on' ? 'גברים ונשים – בכפולות נפרדות' : 'ההפרדה כבויה'); };
 $('scSw').onclick = async () => {
   if (!S.project.sceneTitles && !sceneCount()){ if (!await sceneQuickDialog()) return; } // עוד אין סוגי תמונות – סימון מהיר של הרגעים
   S.project.sceneTitles = !S.project.sceneTitles; touchProject(); updDesignRow();
@@ -7367,7 +7373,7 @@ function proOverlay(L){
   { const fl = L.items.filter(i => i.grp === 'film').sort((a, b) => a.pi - b.pi), pa = fl.length && fl[0].path; // אחרי שמירת הראשים הרוחב משתנה – מחברים את הרצועה מחדש
     if (pa){ const ws = fl.map(i => i.w + 2*pa.pad - .3), tot = ws.reduce((a, b) => a + b, 0); let cum = 0;
       fl.forEach((it, i) => { const t = cum + ws[i]/2; cum += ws[i]; let cx, cy, ang;
-        if (pa.diag){ const d = t - tot/2; ang = pa.a; cx = G.W/2 + Math.cos(ang) * d; cy = G.H/2 + Math.sin(ang) * d; }
+        if (pa.diag){ const d = t - tot/2; ang = pa.a; cx = (pa.cx ?? G.W/2) + Math.cos(ang) * d; cy = G.H/2 + Math.sin(ang) * d; }
         else { const x0 = pa.x1 - tot, ph = t / tot * Math.PI * 1.6; cx = x0 + t; cy = pa.y0 + Math.sin(ph) * pa.amp; ang = Math.atan(Math.cos(ph) * pa.amp * Math.PI * 1.6 / tot); }
         if (ltr) cx = G.W - cx;
         it.x = cx - it.w/2; it.y = cy - it.h/2; it.rot = (ltr ? -1 : 1) * ang * 180 / Math.PI; });
@@ -7392,6 +7398,13 @@ function proOverlay(L){
       if (!best || bad < best.bad) best = {bad, r};
       if (bad < .01) break;
     }
+    if (best && best.bad > .02){ // כל המקומות המוצעים נוגעים בפנים – סורקים את כל הכפולה ומקטינים עד שנמצא מקום נקי
+      for (const sc of [.85, .7, .58, .5]) for (let gy = 0; gy <= 6; gy++) for (let gx = 0; gx <= 12; gx++){
+        const w = it.w * sc, h = it.h * sc, r = {x:G.m + (G.W - 2*G.m - w) * gx / 12, y:G.m + (G.H - 2*G.m - h) * gy / 6, w, h};
+        if (Math.abs(r.x + w/2 - G.pw) < w * .35) continue; // לא על הקיפול
+        const bad = heads.reduce((a, hr) => a + rOver(r, hr) / Math.max(1, hr.w * hr.h), 0) * 10 + placed.reduce((a, p) => a + rOver(r, p) / (w * h), 0) * 2 + (1 - sc) * .6;
+        if (bad < best.bad) best = {bad, r}; }
+    }
     if (best){ Object.assign(it, best.r); placed.push(best.r); }
     delete it.cands;
   }
@@ -7406,7 +7419,7 @@ function genHeroBleed(ids, G, v){
   const hx = hs === 'R' ? W - hw : -G.B;
   items.push(P(hero, {x:hx, y:-G.B, w:hw + G.B, h:G.H + 2*G.B}, T, {border:0, shadow:0, vignette:0, fade:{edge:hs === 'R' ? 'left' : 'right', len:W * .13, color:bgc}}));
   const st = dark ? 'gold' : 'silver';
-  const ovN = !fanStyle && rest.length >= 4 ? 2 : 0, ovIds = pickBest(rest, 1.4, ovN).slice(0, ovN); rest = rest.filter(i => !ovIds.includes(i));
+  const hf = ((META.get(hero) || {}).faces || []).filter(f => f.w >= .025).length, ovN = !fanStyle && rest.length >= 4 && hf < 4 ? 2 : 0, /* על תמונה קבוצתית צפופה – לא מניחים תמונות קטנות (אין מקום בלי פנים) */ ovIds = pickBest(rest, 1.4, ovN).slice(0, ovN); rest = rest.filter(i => !ovIds.includes(i));
   const freeW = W - hw + W * .05, r = inset(hs === 'R' ? {x:0, y:0, w:freeW, h:G.H} : {x:W - freeW, y:0, w:freeW, h:G.H}, G.m * 1.1);
   if (fanStyle){ // שורת תמונות מוטות כמו מניפה + תמונה רחבה מתחת
     const k = Math.max(1, rest.length - (rest.length >= 4 ? 1 : 0)), fanIds = rest.slice(0, k), bot = rest.slice(k);
@@ -7753,19 +7766,22 @@ function bgRect(G, ar){ const BW = G.W + 2*G.B, BH = G.H + 2*G.B; let w = BW, h 
 const RND = (ids, v) => { let s = 7; for (const id of ids) for (const ch of String(id)) s = (s * 31 + ch.charCodeAt(0)) >>> 0; s = (s + v * 977) >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); };
 const printOpts = (G, w, h, R, rmax) => ({border:Math.max(1.5, Math.min(w, h) * .035), borderColor:'#FBF8F1', shadow:.85, rot:(R() - .5) * 2 * rmax, vignette:0});
 /* חבל כביסה: כל תמונה תלויה באטב אמיתי מהצילום; האטב מצויר מעל התמונה */
-function genLine(ids, G, v){
-  const T = G.T, items = [], R = RND(ids, v), B = bgRect(G, BOARD_BG.line.ar);
-  const pegs = LINE_PEGS.map(([px, py]) => ({x:B.x + px * B.w, y:B.y + py * B.h})).filter(p => p.x > G.m && p.x < G.W - G.m);
-  const sp = pegs.length > 1 ? (pegs[pegs.length - 1].x - pegs[0].x) / (pegs.length - 1) : G.W / 4;
-  const ok0 = pegs.filter(p => Math.abs(p.x - G.pw) > sp * .5);             // לא תולים על הקיפול
-  const step = Math.max(1, Math.min(2, Math.floor(ok0.length / Math.max(1, ids.length)))), pw = sp * step * .88; // מעט תמונות → תמונות גדולות יותר
-  const ok = ok0.length >= ids.length ? ok0 : pegs;                          // אף תמונה לא נשמטת
-  const n = Math.min(ids.length, ok.length), pick = []; for (let i = 0; i < n; i++) pick.push(ok[Math.min(ok.length - 1, Math.round(i * (ok.length - 1) / Math.max(1, n - 1)))]);
-  const clampLen = B.h * .055;
-  ids.slice(0, n).forEach((id, i) => { const p = pick[i], ar = clamp(asp(id), .72, 1.35); let w = pw, h = w / ar; const top = p.y - clampLen, maxH = G.H - G.m - top; if (h > maxH){ h = maxH; w = h * ar; }
-    const ph = P(id, {x:p.x - w/2, y:top, w, h}, T, Object.assign(printOpts(G, w, h, R, 1.6), {hangTop:top})); items.push(ph); });
-  items.push({t:'el', el:'b:ov-line.webp', x:B.x, y:B.y, w:B.w, h:B.h, rot:0, op:1, flip:false, fixed:1});
-  return {bg:{type:'elbg', el:BOARD_BG.line.el}, items};
+function genLine(ids, G, v){ // חבל כביסה: קיר נקי + חבל שוקע, תמונות גדולות ואטבים קטנים (כשליש מגובה התמונה)
+  const T = G.T, items = [], R = RND(ids, v), ar0 = 4122 / 1749, B = bgRect(G, ar0);
+  const ropeY = x => { const t = 2 * (x - B.x) / B.w - 1; return B.y + (.27 - .13 * t * t) * B.h; };
+  const half = Math.ceil(ids.length / 2);
+  ['R', 'L'].forEach((side, si) => {
+    const part = si ? ids.slice(half) : ids.slice(0, half); if (!part.length) return;
+    const pg = inset(page(side, G), G.m * 1.2, 0), k = part.length, gap = G.g * 5, slot = (pg.w - gap * (k - 1)) / k;
+    part.forEach((id, i) => { const ar = clamp(asp(id), .7, 1.5), cx = pg.x + pg.w - slot * (i + .5) - gap * i;
+      let w = slot * .94, h = w / ar; const Lp0 = clamp(h * .3, 11, 24), top0 = ropeY(cx) + Lp0 * .22, maxH = G.H - G.m - top0;
+      if (h > maxH){ h = maxH; w = h * ar; }
+      const Lp = clamp(h * .3, 10, 24), top = ropeY(cx) + Lp * .22, rot = (R() - .5) * 3;
+      const ph = P(id, {x:cx - w/2, y:top, w, h}, T, Object.assign(printOpts(G, w, h, R, 0), {rot, hangTop:top})); items.push(ph);
+      (w / h > 1.12 ? [.2, .8] : [.5]).forEach(fx => items.push({t:'el', el:'b:peg1.webp', x:0, y:0, w:Lp * 97 / 702, h:Lp, rot:0, op:1, flip:false, shadow:true, anchor:ph, at:'clip', fx, ayf:.42}));
+    });
+  });
+  return {bg:{type:'elbg', el:'b:bg-line2.webp'}, items};
 }
 /* לוח גיר / שולחן עץ / קרפט: תמונות מודפסות + קישוט לפי הסגנון */
 function genBoard(kind){ return (ids, G, v) => {
@@ -7826,6 +7842,7 @@ SPECIAL_FAMS.splice(2, 0, 'clothesline', 'galleryWall', 'woodTable', 'kraftBook'
   add(CAT_PLAN, {portrait:{galleryWall:1, clothesline:1}, group:{woodTable:1, galleryWall:1}, detail:{kraftBook:1, woodTable:1}, event:{clothesline:1, chalk:1}});
   add(SCENE_PLAN, {family:{galleryWall:2}, tables:{woodTable:1}, kids:{chalk:2, clothesline:1}}); }
 Object.assign(EL_CATS, {dried:'פרחים מיובשים'});
+Object.assign(EL_CATS, {torah:'ספרי תורה'}); EV_CATS.barmitzva = ['torah'].concat(EV_CATS.barmitzva); if (EV_CATS.general) EV_CATS.general = EV_CATS.general.concat(['torah']);
 Object.keys(EV_CATS).forEach(k => { if (!EV_CATS[k].includes('dried')) EV_CATS[k].push('dried'); });
 
 /* =========================================================
@@ -7862,7 +7879,7 @@ function genMesh(ids, G, v){
     for (const it of L.items) if (it.hangTop != null && it.t === 'photo'){ it.y = it.hangTop; delete it.hangTop; }
     for (const it of L.items){ const p = it.anchor; if (!p || it.at !== 'clip') continue; delete it.anchor;
       const th = (p.rot || 0) * Math.PI / 180, c = Math.cos(th), s = Math.sin(th), cx = p.x + p.w/2, cy = p.y + p.h/2, lx = ((it.fx ?? .5) - .5) * p.w, ly = -p.h/2;
-      const ax = cx + lx * c - ly * s, ay = cy + lx * s + ly * c; it.x = ax - it.w/2; it.y = ay - it.h * .74; it.rot = p.rot || 0; delete it.fx; }
+      const ax = cx + lx * c - ly * s, ay = cy + lx * s + ly * c; it.x = ax - it.w/2; it.y = ay - it.h * (it.ayf ?? .74); it.rot = p.rot || 0; delete it.fx; delete it.ayf; }
     return ca(L); }; }
 FAMS.mesh = {min:3, max:8, vars:3, gen:genMesh, w:1, name:'רשת מתכת'};
 SPECIAL_FAMS.splice(3, 0, 'mesh');
@@ -7890,8 +7907,8 @@ function genBigNumber(ids, G, v){
   const nh = panel.h * .62, cap = (EVENTS[S.project.event] || {}).n || '';
   items.push({t:'text', x:panel.x, y:panel.y + panel.h * .06, w:panel.w, h:nh, text:num, font:'"Suez One"', weight:400, size:nh * .92, color:T.accent || '#B48A5A', hatch:1});
   if (cap) items.push({t:'text', x:panel.x, y:panel.y + panel.h * .06 + nh, w:panel.w, h:panel.h * .1, text:cap, font:'"Amatic SC"', weight:700, size:panel.h * .08, color:T.ink || '#4A3A2A'});
-  const d = DRIED[(v >> 1) % DRIED.length], dh = panel.h * .26, dw = dh * .8;
-  items.push({t:'el', el:d, x:panel.x + (panel.w - dw) / 2, y:panel.y + panel.h - dh, w:dw, h:dh, rot:hs === 'R' ? -10 : 10, op:1, flip:hs !== 'R', shadow:true});
+  const tor = S.project.event === 'barmitzva', d = tor ? 'b:tr0' + [1, 2, 3, 4, 6, 7][(v >> 1) % 6] + '.webp' : DRIED[(v >> 1) % DRIED.length], dh = panel.h * (tor ? .3 : .26), dw = dh * (tor ? .42 : .8);
+  items.push({t:'el', el:d, x:panel.x + (panel.w - dw) / 2, y:panel.y + panel.h - dh, w:dw, h:dh, rot:tor ? 0 : hs === 'R' ? -10 : 10, op:1, flip:!tor && hs !== 'R', shadow:true});
   // הצד השני: רשת אחידה
   const g = inset(page(os, G), G.m * .8), n = rest.length, cols = n <= 4 ? 2 : 3, rows = Math.ceil(n / cols), gap = G.g * 1.4;
   const cw = (g.w - gap * (cols - 1)) / cols, ch = (g.h - gap * (rows - 1)) / rows;
@@ -7941,17 +7958,34 @@ function genVintage(ids, G, v){
 }
 /* פילם ישר מעל תמונה גדולה של הכוכב; גרסה זוגית – בתוך שוליים רחבים של עץ */
 function genFilmHero(ids, G, v){
-  const T = G.T, items = [], mat = v % 2 === 1;
-  ids = pickHero(ids, G.W / G.H); const hero = ids[0], sIds = pickBest(ids.slice(1), 1.42, 99);
+  const T = G.T, items = [], mat = v % 2 === 1, R = RND(ids, v);
+  ids = pickHero(ids, G.W / G.H); const hero = ids[0];
   const mw = mat ? G.m * 2.2 : 0, box = mat ? {x:mw, y:mw, w:G.W - 2*mw, h:G.H - 2*mw} : {x:-G.B, y:-G.B, w:G.W + 2*G.B, h:G.H + 2*G.B};
-  items.push(P(hero, box, T, {border:0, shadow:mat ? .9 : 0, vignette:0}));
-  const k = sIds.length, pad = 2.4; let fh = G.H * .24, fw = fh * 1.42;
-  const avail = (mat ? box.w : G.W) - G.m * 2; if (k * (fw + 2*pad) > avail){ fw = avail / k - 2*pad; fh = fw / 1.42; }
-  const step = fw + 2*pad - .3;
-  sIds.forEach((id, i) => { const t = (i - (k - 1) / 2) * step, cx = G.W/2 + t, cy = G.H * .5;
+  // התמונה הגדולה ברוחב הטבעי שלה (בלי לחתוך ראשים) – והשטח שנשאר בצדדים מתמלא בהדפסות מוטות או בברכה
+  const hw = Math.min(box.w, box.h * clamp(asp(hero), .7, 3) * 1.12), side = (box.w - hw) / 2, hasSide = side > box.w * .09;
+  const hb = {x:box.x + side, y:box.y, w:hw, h:box.h};
+  items.push(P(hero, hb, T, {border:0, shadow:mat || hasSide ? .9 : 0, vignette:0}));
+  let rest = ids.slice(1), sideIds = [];
+  if (hasSide && rest.length >= 5) sideIds = pickBest(rest, 1.2, rest.length >= 6 ? 2 : 1).slice(0, rest.length >= 6 ? 2 : 1);
+  rest = rest.filter(i => !sideIds.includes(i));
+  const sIds = pickBest(rest, 1.42, 99), k = sIds.length, pad = 2.4;
+  let fh = G.H * .24, fw = fh * 1.42; const avail = hw - G.m * 1.5; if (k * (fw + 2*pad) > avail){ fw = avail / k - 2*pad; fh = fw / 1.42; }
+  const step = fw + 2*pad - .3, cx0 = hb.x + hb.w / 2;
+  sIds.forEach((id, i) => { const t = (i - (k - 1) / 2) * step, cx = cx0 + t, cy = G.H * .5;
     const it = P(id, {x:cx - fw/2, y:cy - fh/2, w:fw, h:fh}, T, {border:0, shadow:0, film:true, rot:0, grp:'film', pi:i});
-    if (!i){ it.path = {diag:true, a:0, pad}; it.gc = [.22, .3, 0, -.22, -.3].map(f => ({dx:0, dy:f * (mat ? box.h : G.H)})); }
+    if (!i){ it.path = {diag:true, a:0, pad, cx:cx0}; it.gc = [.22, .3, 0, -.22, -.3].map(f => ({dx:0, dy:f * box.h})); }
     items.push(it); });
+  if (hasSide){ const sz = Math.min(side * .86, box.h * .52), spots = [{x:box.x + (side - sz) / 2, y:box.y + box.h * .08, r:-5}, {x:box.x + box.w - side + (side - sz) / 2, y:box.y + box.h * .92 - sz, r:4}];
+    sideIds.forEach((id, i) => { const ar = clamp(asp(id), .75, 1.4), w = ar >= 1 ? sz : sz * ar, h = w / ar, s0 = spots[i];
+      items.push(P(id, {x:s0.x + (sz - w)/2, y:s0.y + (sz - h)/2, w, h}, T, Object.assign(printOpts(G, w, h, R, 0), {rot:s0.r, shadow:1}))); });
+    const light = mat || false, tc = mat ? '#FFF8EC' : '#F3E9D8';
+    if (sideIds.length < 2){ // ברכה בצד הפנוי + קישוט עדין
+      const sx = sideIds.length ? box.x + box.w - side : box.x, word = spreadWord() || 'מזל טוב', tw = side * .9;
+      items.push({t:'text', x:sx + (side - tw) / 2, y:box.y + box.h * .3, w:tw, h:box.h * .3, text:word, font:'"Amatic SC"', weight:700, size:Math.min(box.h * .22, tw * .36), color:tc, maxLines:2});
+      const dh = box.h * .42; items.push({t:'el', el:DRIED[v % DRIED.length], x:sx + (side - dh * .7) / 2, y:box.y + box.h * .64, w:dh * .7, h:dh, rot:(v % 2 ? 8 : -8), op:1, flip:false, shadow:true});
+      if (!sideIds.length){ const ox = box.x + box.w - side; items.push({t:'el', el:DRIED[(v + 3) % DRIED.length], x:ox + (side - dh * .7) / 2, y:box.y + box.h * .2, w:dh * .7, h:dh, rot:-10, op:1, flip:true, shadow:true}); }
+    }
+  }
   return {bg:mat ? {type:'elbg', el:BOARD_BG.wood.el} : {type:'solid', color:T.dark}, items};
 }
 Object.assign(FAMS, {
@@ -8088,6 +8122,60 @@ function drawLightFx(ctx, L, k, ox){
   if (flip){ ctx.translate(x + w, y); ctx.scale(-1, 1); ctx.drawImage(img, 0, 0, w, h); } else ctx.drawImage(img, x, y, w, h);
   ctx.restore();
 }
+
+/* =========================================================
+   שלב 32 – הפרדה בין גברים לנשים באירוע דתי
+   תמונה של גברים ותמונה של נשים לא נמצאות באותה כפולה. תמונות משפחה מעורבות – מותרות בכל מקום.
+   הגברים קודם, הנשים אחריהם (בכל פרק), או כפולה של גברים וכפולה של נשים.
+   ========================================================= */
+function sepFaceG(){ const m = new Map(); (PPL.all || []).forEach(c => { if (c.items.length >= 2) c.items.forEach(i => m.set(i.f, c.g)); }); return m; }
+let SEP_G = null;
+function photoSex(pOrId){ // 'M' גברים בלבד · 'W' נשים בלבד · 'X' מעורב · null בלי מבוגרים
+  const p = typeof pOrId === 'object' ? pOrId : META.get(pOrId); if (!p) return null;
+  if (p._sexV === SEP_G && p._sex !== undefined) return p._sex;
+  let m = 0, w = 0;
+  for (const f of p.faces || []){ if (f.w < .018 || (f.age != null && f.age < 13)) continue; // ילדים לא נספרים
+    const g = SEP_G && SEP_G.has(f) ? SEP_G.get(f) : f.g; if (g == null) continue;
+    if (g >= .62) m++; else if (g <= .38) w++; }
+  const r = m && w ? 'X' : m ? 'M' : w ? 'W' : null; p._sex = r; p._sexV = SEP_G; return r;
+}
+/* האם זה אירוע דתי? רוב תמונות הקבוצה הן של מין אחד בלבד */
+function sepDetect(){
+  let multi = 0, single = 0;
+  for (const p of albumPhotos()){ let m = 0, w = 0;
+    for (const f of p.faces || []){ if (f.w < .018 || (f.age != null && f.age < 13)) continue; const g = SEP_G && SEP_G.has(f) ? SEP_G.get(f) : f.g; if (g == null) continue; if (g >= .62) m++; else if (g <= .38) w++; }
+    if (m + w >= 3){ multi++; if (!m || !w) single++; } }
+  return {religious:multi >= 6 && single / multi >= .7, multi, single};
+}
+function sepOn(){ const o = S.project && S.project.sep; if (o === 'on') return true; if (o === 'off') return false; SEP_G = sepFaceG(); return sepDetect().religious; }
+const sexClash = ids => { let m = false, w = false; for (const id of ids){ const s = photoSex(id); if (s === 'M') m = true; else if (s === 'W') w = true; } return m && w; };
+/* פיצול כל רגע לגברים (וכל השאר) ואחריו נשים; קבוצת נשים קטנה מצטרפת לבאה */
+function sepSessions(ss){
+  if (!sepOn()) return ss; SEP_G = SEP_G || sepFaceG();
+  const out = []; let carry = [];
+  ss.forEach((s, i) => { const A = s.items.filter(p => photoSex(p) !== 'W'), Wl = carry.concat(s.items.filter(p => photoSex(p) === 'W'));
+    if (A.length) out.push(Object.assign({}, s, {items:A}));
+    if (Wl.length >= 3 || (i === ss.length - 1 && Wl.length)){ out.push(Object.assign({}, s, {items:Wl})); carry = []; } else carry = Wl; });
+  if (carry.length) out.push(Object.assign({}, ss[ss.length - 1] || {}, {items:carry}));
+  return out;
+}
+/* רשת ביטחון אחרי כל שלבי התכנון: כפולה מעורבת – הנשים עוברות לכפולה משלהן מיד אחריה */
+function enforceSep(spreads){
+  if (!spreads || !spreads.length || !sepOn()) return spreads;
+  for (let i = 0; i < spreads.length; i++){ const sp = spreads[i]; if (sp.kind === 'cover' || !sexClash(sp.ids)) continue;
+    const W = sp.ids.filter(id => photoSex(id) === 'W'), rest = sp.ids.filter(id => photoSex(id) !== 'W');
+    if (rest.length === 1 || W.length === 1){ // אחד בודד – עובר לכפולה שכנה מתאימה
+      const lone = rest.length === 1 ? rest : W, keep = rest.length === 1 ? W : rest;
+      const nb = [spreads[i + 1], spreads[i - 1]].find(s => s && s.kind !== 'cover' && s.fam !== 'title' && !sexClash(s.ids.concat(lone)));
+      if (nb){ sp.ids = keep; nb.ids = nb.ids.concat(lone); fixFam(sp, i); fixFam(nb, spreads.indexOf(nb)); delete nb.custom; delete sp.custom; continue; } }
+    sp.ids = rest; delete sp.custom; fixFam(sp, i);
+    const ns = {fam:sp.fam, v:sp.v || 0, ids:W, cat:sp.cat, scene:sp.scene}; fixFam(ns, i + 1); spreads.splice(i + 1, 0, ns); i++;
+  }
+  return spreads;
+}
+{ const _p = planAlbumSmart; planAlbumSmart = function(ps, seed){ SEP_G = null; return enforceSep(_p(ps, seed)); }; }
+/* "עוד תמונות" לכפולה – לא מכניס נשים לכפולה של גברים ולהפך */
+{ const _n = nearUnused; nearUnused = function(sp, k){ if (!sepOn()) return _n(sp, k); return _n(sp, k * 4).filter(id => !sexClash(sp.ids.concat([id]))).slice(0, k); }; }
 
 /* =========================================================
    הפעלה
